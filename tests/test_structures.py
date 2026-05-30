@@ -43,3 +43,26 @@ def test_extrapolation_flag():
     assert result["interpolating"] is False
     result = model.wing_mass_with_confidence(100.0)
     assert result["interpolating"] is False
+
+
+def test_ar_correction_increases_mass_at_high_ar():
+    model = EmpiricalStructure.from_data(SOLAR_HALE_DATA)
+    m_base = model.wing_mass(30.0)              # no AR → uses base
+    m_ref = model.wing_mass(30.0, aspect_ratio=25.0)  # AR=ref → no correction
+    m_high = model.wing_mass(30.0, aspect_ratio=40.0)  # AR>ref → heavier
+    assert abs(m_base - m_ref) < 1e-6  # AR=ref same as no AR
+    assert m_high > m_base
+
+
+def test_ar_correction_decreases_mass_at_low_ar():
+    model = EmpiricalStructure.from_data(SOLAR_HALE_DATA)
+    m_base = model.wing_mass(30.0)
+    m_low = model.wing_mass(30.0, aspect_ratio=15.0)   # AR<ref → lighter
+    assert m_low < m_base
+
+
+def test_ar_correction_monotonic():
+    model = EmpiricalStructure.from_data(SOLAR_HALE_DATA)
+    masses = [model.wing_mass(30.0, aspect_ratio=ar) for ar in [10, 15, 20, 25, 30, 35, 40]]
+    for i in range(len(masses) - 1):
+        assert masses[i] < masses[i + 1]

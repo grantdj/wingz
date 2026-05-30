@@ -1,7 +1,30 @@
 """
 Empirical wing mass scaling for solar/HALE aircraft.
 
-Power-law fit m_wing = a * b^n calibrated to real aircraft data.
+Two models:
+1. Power-law fit m_wing = a * b^n — calibrated to real aircraft data, span-only.
+2. AR-corrected model — adds a physics-based penalty for high aspect ratio
+   based on spar sizing constraints.
+
+The AR correction comes from beam bending: the spar moment of inertia I is
+limited by the available spar depth, which is constrained by chord and airfoil
+thickness ratio:
+
+    chord = span / AR
+    max_spar_depth = chord * (t/c)
+    I ~ cap_area * (depth/2)^2
+
+For the same bending moment, a shallower spar needs more cap area (and mass)
+to achieve the same I. The penalty scales as:
+
+    m_corrected = m_base * (AR / AR_ref)^ar_exponent
+
+where AR_ref is the typical AR of the calibration aircraft (~25) and
+ar_exponent captures how fast structural mass grows with AR. From beam
+theory, I ~ depth^2 and depth ~ 1/AR, so cap_area ~ AR^2 for constant I.
+In practice the exponent is lower (~1.0-1.5) because designers trade off
+deflection limits, use higher-grade materials, and accept more flexibility
+at high AR.
 
 References:
     Raymer, D.P., Aircraft Design: A Conceptual Approach, 6th ed., AIAA, 2018.
@@ -58,15 +81,45 @@ class EmpiricalStructure:
     exponent: float
     min_span: float
     max_span: float
+    ar_ref: float = 25.0        # reference AR of calibration aircraft
+    ar_exponent: float = 1.2    # structural mass penalty exponent for AR > ar_ref
 
     @classmethod
-    def from_data(cls, data: list[dict]) -> "EmpiricalStructure":
+    def from_data(cls, data: list[dict], ar_ref: float = 25.0,
+                  ar_exponent: float = 1.2) -> "EmpiricalStructure":
         coefficient, exponent = fit_power_law(data)
         spans = [d["span_m"] for d in data]
-        return cls(coefficient=coefficient, exponent=exponent, min_span=min(spans), max_span=max(spans))
+        return cls(coefficient=coefficient, exponent=exponent,
+                   min_span=min(spans), max_span=max(spans),
+                   ar_ref=ar_ref, ar_exponent=ar_exponent)
 
-    def wing_mass(self, span_m: float) -> float:
-        return self.coefficient * span_m**self.exponent
+    def wing_mass(self, span_m: float, aspect_ratio: float | None = None) -> float:
+        """
+        Wing structural mass.
 
-    def wing_mass_with_confidence(self, span_m: float) -> dict:
-        return {"mass_kg": self.wing_mass(span_m), "interpolating": self.min_span <= span_m <= self.max_span}
+        If aspect_ratio is provided, applies an AR correction:
+            m = m_base * (AR / AR_ref) ^ ar_exponent
+
+        The correction is > 1.0 for AR > AR_ref (thinner chord, shallower spar,
+        needs more cap area) and < 1.0 for AR < AR_ref (deeper spar, lighter caps).
+
+        Physics: spar depth ~ chord * t/c = span/(AR) * t/c
+        For constant bending stiffness I, cap_area ~ 1/depth^2 ~ AR^2.
+        The ar_exponent of 1.2 is conservative (less than the theoretical 2.0)
+        because real designs trade off deflection limits and accept more
+        flexibility at high AR. This should be replaced by the beam model
+        for quantitative results.
+
+        Ref: Euler-Bernoulli beam, I = A * (d/2)^2. Raymer Ch. 15.
+        """
+        base = self.coefficient * span_m**self.exponent
+        if aspect_ratio is None or aspect_ratio == self.ar_ref:
+            return base
+        return base * (aspect_ratio / self.ar_ref) ** self.ar_exponent
+
+    def wing_mass_with_confidence(self, span_m: float,
+                                  aspect_ratio: float | None = None) -> dict:
+        return {
+            "mass_kg": self.wing_mass(span_m, aspect_ratio),
+            "interpolating": self.min_span <= span_m <= self.max_span,
+        }

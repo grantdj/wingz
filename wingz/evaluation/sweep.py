@@ -68,8 +68,8 @@ def evaluate_config(
     hw_masses = [get_hardware_mass(config.architecture, r) for r in roles]
     hw_powers = [get_hardware_power(config.architecture, r) for r in roles]
 
-    # Structural mass per aircraft
-    struct_mass_each = structure.wing_mass(span)
+    # Structural mass per aircraft (AR-corrected if AR is set)
+    struct_mass_each = structure.wing_mass(span, config.aspect_ratio)
 
     # Payload mass — distributed evenly across fleet for now
     payload_mass_each = config.payload.mass_kg / N
