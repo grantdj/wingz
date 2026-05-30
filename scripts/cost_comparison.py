@@ -26,6 +26,7 @@ from wingz.structures.beam import BeamStructure
 from wingz.solar.power import solar_irradiance, day_length_hours
 from wingz.aerodynamics.formation_aero import per_slot_drag_factor, FormationGeometry
 from wingz.cost.materials import fleet_cost, FleetCost
+from wingz.solar.energy_balance import required_coverage_fraction
 
 # ── constants ──────────────────────────────────────────────────────────────
 
@@ -33,14 +34,16 @@ G = 9.81
 CL_MAX = 1.2
 BATT_ENERGY_DENSITY = 250.0
 PANEL_EFF = 0.38
-PANEL_COVERAGE = 0.80
+SOLAR_MARGIN = 3.0        # panel area = margin × minimum needed
+MAX_PANEL_COVERAGE = 0.90
 CD0 = 0.025
 OSWALD_E = 0.85
 RHO = 0.0889
-V_CRUISE = 25.0
 LAT_DEG = 30.0
 DOY = 172
 PLD_G_PER_W = 50  # g/W payload specific mass
+STALL_MARGIN_DAY = 1.15
+STALL_MARGIN_NIGHT = 1.03
 
 CONFIGS = [
     ("1x60m", 1, 60),
@@ -87,7 +90,8 @@ def _solve_config(N, span, pld_power=0.0):
     for _ in range(300):
         ac = struct_each + hw + pld_mass_each + batt_each
         W = ac * g
-        V_cruise = 1.3 * np.sqrt(2 * W / (rho * area_each * CL_MAX))
+        V_stall = np.sqrt(2 * W / (rho * area_each * CL_MAX))
+        V_cruise = STALL_MARGIN_DAY * V_stall
         q = 0.5 * rho * V_cruise ** 2
 
         drag = sum(
@@ -96,19 +100,42 @@ def _solve_config(N, span, pld_power=0.0):
             for j in range(N)
         )
         total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
-        new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
+
+        # Night power at lower stall margin for battery sizing
+        V_night = STALL_MARGIN_NIGHT * V_stall
+        q_night = 0.5 * rho * V_night ** 2
+        drag_night = sum(
+            factors[j] * W ** 2 / (q_night * np.pi * OSWALD_E * span ** 2)
+            + q_night * area_each * CD0
+            for j in range(N)
+        )
+        total_pwr_night = drag_night * V_night + hw_pwr + sk_total + pld_power
+        new_batt = total_pwr_night * night_h / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
             return None
 
         if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05:
-            avail = total_area * PANEL_COVERAGE * PANEL_EFF * avg_irr * day_h
-            solar_surplus_ratio = (avail - total_pwr * 24) / (total_pwr * 24)
+            # Size panels to produce solar_margin × required energy
+            energy_24h = total_pwr * day_h + total_pwr_night * night_h
+            coverage = required_coverage_fraction(
+                energy_required_Wh=energy_24h,
+                solar_margin=SOLAR_MARGIN,
+                wing_area_m2=total_area,
+                panel_efficiency=PANEL_EFF,
+                altitude_m=20000,
+                latitude_deg=LAT_DEG,
+                day_of_year=DOY,
+                max_coverage=MAX_PANEL_COVERAGE,
+            )
+            panel_area = total_area * coverage
+            avail = panel_area * PANEL_EFF * avg_irr * day_h
+            solar_surplus_ratio = (avail - energy_24h) / energy_24h
             fc = fleet_cost(
                 N=N,
                 structural_mass_kg=new_struct * N,
-                solar_panel_area_m2=total_area,
+                solar_panel_area_m2=panel_area,
                 battery_capacity_kWh=new_batt * N * BATT_ENERGY_DENSITY / 1000,
                 n_full_nav=1,
                 n_basic_nav=N - 1,
@@ -117,6 +144,7 @@ def _solve_config(N, span, pld_power=0.0):
             return {
                 "N": N, "span": span, "AR": AR, "chord": chord,
                 "area_each": area_each, "total_area": total_area,
+                "panel_area": panel_area, "panel_coverage": coverage,
                 "struct_each": new_struct, "batt_each": new_batt,
                 "ac_mass": ac, "fleet_mass": N * ac,
                 "V_cruise": V_cruise,

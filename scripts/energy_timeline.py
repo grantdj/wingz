@@ -39,7 +39,8 @@ CRUISE_ALT_M = 20000.0
 RHO_CRUISE = 0.0889
 LAT_DEG = 30.0
 DOY = 172
-V_CRUISE = 25.0  # m/s, fixed for these configs
+STALL_MARGIN_DAY = 1.15
+STALL_MARGIN_NIGHT = 1.03
 
 # Configs: (N, span) — AR is computed by the solver, not hardcoded
 CONFIGS = [
@@ -93,7 +94,8 @@ def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
         W = ac * g
 
         # Cruise speed from wing loading (self-consistent)
-        V_cruise = 1.3 * np.sqrt(2 * W / (rho * area_each * CL_MAX))
+        V_stall = np.sqrt(2 * W / (rho * area_each * CL_MAX))
+        V_cruise = STALL_MARGIN_DAY * V_stall
         q = 0.5 * rho * V_cruise ** 2
 
         drag = sum(
@@ -103,8 +105,18 @@ def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
         )
         total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
 
-        # Battery sized so usable capacity reaches zero at dawn under nominal night load.
-        new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
+        # Night power at lower stall margin
+        V_night = STALL_MARGIN_NIGHT * V_stall
+        q_night = 0.5 * rho * V_night ** 2
+        drag_night = sum(
+            factors[j] * W ** 2 / (q_night * np.pi * OSWALD_E * span ** 2)
+            + q_night * area_each * CD0
+            for j in range(N)
+        )
+        total_pwr_night = drag_night * V_night + hw_pwr + sk_total + pld_power
+
+        # Battery sized to night power — reaches zero at dawn
+        new_batt = total_pwr_night * night_h / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:

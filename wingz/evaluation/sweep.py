@@ -9,8 +9,9 @@ The evaluator iterates to find a self-consistent solution where:
 - Convergence means all quantities are mutually consistent
 
 References:
-    Cruise speed: V_cruise = 1.3 * V_stall, where
+    Cruise speed: V_cruise = margin * V_stall, where
     V_stall = sqrt(2W / (rho * S * CL_max))
+    margin = stall_margin_day (1.15) or stall_margin_night (1.03)
     Ref: Anderson, Fundamentals of Aerodynamics, Ch. 5.
 
 See docs/formation_flight/references.md for full citations.
@@ -35,14 +36,15 @@ from wingz.cost.mass_proxy import mass_proxy_cost
 from wingz.mission.profiles import MissionProfile
 from wingz.structures.beam import BeamStructure
 from wingz.mission.payload import Payload, no_payload
-from wingz.solar.energy_balance import compute_energy_balance, required_battery_mass
+from wingz.solar.energy_balance import (
+    compute_energy_balance, required_battery_mass, required_coverage_fraction,
+)
 from wingz.structures.empirical import EmpiricalStructure, SOLAR_HALE_DATA
 
 
 # Aerodynamic constants
 CL_MAX = 1.2           # max lift coefficient for thin high-altitude airfoil
 CL_CRUISE = 0.7        # cruise CL (corresponds to ~1.3x stall speed)
-CRUISE_MARGIN = 1.3     # V_cruise / V_stall
 
 
 class PositionStrategy(enum.Enum):
@@ -63,21 +65,6 @@ class AircraftConfig:
     payload: Payload = field(default_factory=no_payload)
 
 
-def _cruise_speed(weight_N: float, wing_area_m2: float, rho: float) -> float:
-    """
-    Compute cruise speed from wing loading.
-
-    V_stall = sqrt(2W / (rho * S * CL_max))
-    V_cruise = 1.3 * V_stall
-
-    Ref: Anderson (2017) Ch. 5.
-    """
-    if wing_area_m2 <= 0 or rho <= 0:
-        return 25.0  # fallback
-    v_stall = np.sqrt(2 * weight_N / (rho * wing_area_m2 * CL_MAX))
-    return CRUISE_MARGIN * v_stall
-
-
 def _dynamic_pressure(rho: float, velocity: float) -> float:
     return 0.5 * rho * velocity**2
 
@@ -89,7 +76,8 @@ def evaluate_config(
     beam: Optional[BeamStructure] = None,
     latitude_deg: float = 30.0,
     day_of_year: int = 172,
-    panel_coverage: float = 0.8,
+    solar_margin: float = 3.0,       # panel area sized to produce margin × required energy
+    max_panel_coverage: float = 0.90,  # can't panel more than 90% of wing
     panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
     propulsion_efficiency: float = 0.75,  # combined prop × motor × ESC
     stall_margin_day: float = 1.15,   # V_cruise / V_stall during day
@@ -257,7 +245,24 @@ def evaluate_config(
         # Use night power for battery sizing
         total_power = total_power_day  # for backwards compat in results
 
-        # Energy balance
+        # Compute total 24h energy requirement for panel sizing
+        day_hours_est = energy_result.day_hours if iteration > 0 else 13.9
+        night_hours_est = 24.0 - day_hours_est
+        energy_required_24h = total_power_day * day_hours_est + total_power_night * night_hours_est
+
+        # Size panel coverage to produce margin × required energy
+        panel_coverage = required_coverage_fraction(
+            energy_required_Wh=energy_required_24h,
+            solar_margin=solar_margin,
+            wing_area_m2=total_wing_area,
+            panel_efficiency=panel_efficiency,
+            altitude_m=mission.altitude_m,
+            latitude_deg=latitude_deg,
+            day_of_year=day_of_year,
+            max_coverage=max_panel_coverage,
+        )
+
+        # Energy balance with computed coverage
         energy_result = compute_energy_balance(
             power_required_W=total_power_day,
             wing_area_m2=total_wing_area,
@@ -352,6 +357,8 @@ def evaluate_config(
         "total_power_night_W": total_power_night,
         "total_power_W": total_power_day,  # backwards compat
         "total_wing_area_m2": total_wing_area,
+        "panel_coverage": panel_coverage,
+        "solar_margin": solar_margin,
         "cost_score": cost_score,
         "energy_available_Wh": energy_result.energy_available_Wh,
         "energy_required_Wh": energy_result.energy_required_total_Wh,

@@ -14,7 +14,10 @@ See docs/formation_flight/references.md for full citations.
 """
 
 from dataclasses import dataclass
-from wingz.solar.power import daily_energy_available, day_length_hours
+from wingz.solar.power import (
+    daily_energy_available, day_length_hours, solar_irradiance, panel_power,
+)
+import numpy as np
 
 
 @dataclass
@@ -50,6 +53,38 @@ def compute_energy_balance(
         energy_required_total_Wh=energy_required_total,
         surplus_Wh=surplus, closes=surplus >= 0,
     )
+
+
+def required_coverage_fraction(
+    energy_required_Wh: float,
+    solar_margin: float,
+    wing_area_m2: float,
+    panel_efficiency: float,
+    altitude_m: float,
+    latitude_deg: float,
+    day_of_year: int,
+    max_coverage: float = 0.90,
+) -> float:
+    """
+    Compute the panel coverage fraction needed to produce
+    energy_required_Wh * solar_margin over one day.
+
+    Returns the fraction of wing area that must be paneled (capped at max_coverage).
+    If required coverage exceeds max_coverage, returns max_coverage — the caller
+    should check whether the energy balance actually closes.
+    """
+    day_hours = day_length_hours(latitude_deg, day_of_year)
+    peak_irr = solar_irradiance(altitude_m, latitude_deg, day_of_year)
+    avg_irr = (2.0 / np.pi) * peak_irr
+
+    # energy_available = wing_area * coverage * efficiency * avg_irr * day_hours
+    # solve for coverage:
+    energy_target = energy_required_Wh * solar_margin
+    denominator = wing_area_m2 * panel_efficiency * avg_irr * day_hours
+    if denominator <= 0:
+        return max_coverage
+    coverage = energy_target / denominator
+    return min(coverage, max_coverage)
 
 
 def required_battery_mass(
