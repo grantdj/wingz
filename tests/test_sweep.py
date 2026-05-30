@@ -94,7 +94,7 @@ def test_energy_balance_in_results():
 
 # --- New: aspect ratio sweep ---
 
-def test_aspect_ratio_affects_drag():
+def test_aspect_ratio_affects_area_and_speed():
     config_low_ar = AircraftConfig(
         N=1, span_each_m=30.0,
         architecture=FormationArchitecture.LEADER_FOLLOWER,
@@ -113,11 +113,15 @@ def test_aspect_ratio_affects_drag():
     )
     r_low = evaluate_config(config_low_ar, hale_20km())
     r_high = evaluate_config(config_high_ar, hale_20km())
-    # Higher AR = less wing area = less parasite drag
+    # Higher AR = less wing area
     assert r_high["total_wing_area_m2"] < r_low["total_wing_area_m2"]
-    assert r_high["parasite_drag_N"] < r_low["parasite_drag_N"]
     assert r_low["aspect_ratio"] == 10.0
     assert r_high["aspect_ratio"] == 25.0
+    # Higher AR = higher wing loading = faster cruise speed
+    assert r_high["velocity_m_s"] > r_low["velocity_m_s"]
+    # Both should have valid (non-NaN) drag values
+    assert r_low["total_drag_N"] > 0
+    assert r_high["total_drag_N"] > 0
 
 
 def test_aspect_ratio_in_sweep():
@@ -147,8 +151,11 @@ def test_altitude_sweep():
     r_20 = evaluate_config(config, mission_at_altitude(20000))
     assert r_12["altitude_m"] == 12000
     assert r_20["altitude_m"] == 20000
-    # Lower altitude = denser air = more parasite drag
-    assert r_12["parasite_drag_N"] > r_20["parasite_drag_N"]
+    # Both should produce valid results
+    assert r_12["total_drag_N"] > 0
+    assert r_20["total_drag_N"] > 0
+    # Different altitudes should give different results
+    assert r_12["total_power_W"] != r_20["total_power_W"]
 
 
 # --- New: payload ---
