@@ -1,4 +1,7 @@
 
+# DEPRECATED: This was the original prototype. Use the wingz package instead.
+# Kept for reference. See wingz/ for the refactored, modular version.
+
 """
 formation_span_model.py
 

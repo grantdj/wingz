@@ -1,4 +1,7 @@
 
+# DEPRECATED: Use scripts/sweep_single_vs_formation.py instead.
+# This was the original prototype script.
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
