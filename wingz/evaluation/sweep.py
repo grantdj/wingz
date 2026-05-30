@@ -33,6 +33,7 @@ from wingz.control.architectures import (
 from wingz.control.station_keeping import station_keeping_power
 from wingz.cost.mass_proxy import mass_proxy_cost
 from wingz.mission.profiles import MissionProfile
+from wingz.structures.beam import BeamStructure
 from wingz.mission.payload import Payload, no_payload
 from wingz.solar.energy_balance import compute_energy_balance, required_battery_mass
 from wingz.structures.empirical import EmpiricalStructure, SOLAR_HALE_DATA
@@ -85,20 +86,28 @@ def evaluate_config(
     config: AircraftConfig,
     mission: MissionProfile,
     structure: Optional[EmpiricalStructure] = None,
+    beam: Optional[BeamStructure] = None,
     latitude_deg: float = 30.0,
     day_of_year: int = 172,
     panel_coverage: float = 0.8,
     panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
-    max_iterations: int = 50,
+    max_iterations: int = 80,
 ) -> dict:
     """
-    Evaluate a configuration with self-consistent cruise speed and battery mass.
+    Evaluate a configuration with fully self-consistent mass convergence.
 
-    Iterates until total mass, cruise speed, drag, power, and battery mass
-    all converge. The cruise speed is computed from wing loading at each
-    iteration — not hardcoded.
+    Iterates until ALL of these converge simultaneously:
+    - Structural mass (beam model: sized to carry actual loaded weight)
+    - Battery mass (sized for night survival at actual power draw)
+    - Cruise speed (from wing loading at actual total weight)
+    - Drag and power (from actual speed and weight)
+
+    The beam model replaces the empirical model when AR is set, because
+    the empirical model was calibrated to empty aircraft and does not
+    account for loaded weight.
     """
     structure = structure or EmpiricalStructure.from_data(SOLAR_HALE_DATA)
+    beam = beam or BeamStructure()
     N = config.N
     span = config.span_each_m
     rho = mission.rho
@@ -108,21 +117,17 @@ def evaluate_config(
     hw_masses = [get_hardware_mass(config.architecture, r) for r in roles]
     hw_powers = [get_hardware_power(config.architecture, r) for r in roles]
 
-    # Structural mass per aircraft (AR-corrected if AR is set)
-    struct_mass_each = structure.wing_mass(span, config.aspect_ratio)
-
     # Payload mass — distributed evenly across fleet
     payload_mass_each = config.payload.mass_kg / N
 
-    # Wing area per aircraft (fixed by geometry, doesn't change with iteration)
+    # Wing area per aircraft (fixed by geometry)
     if config.aspect_ratio is not None:
         wing_area_each = span**2 / config.aspect_ratio
         ar_each = config.aspect_ratio
     else:
-        # No AR specified: use wing loading to size wing area, then derive AR.
-        # Wing area is sized to the empty aircraft weight (no battery) to avoid
-        # feedback loop where bigger battery → more weight → more area → divergence.
-        empty_weight = (struct_mass_each + hw_masses[0] + payload_mass_each) * 9.81
+        # Legacy path: empirical structure, fixed velocity
+        struct_init = structure.wing_mass(span, config.aspect_ratio)
+        empty_weight = (struct_init + hw_masses[0] + payload_mass_each) * 9.81
         wing_area_each = mission.wing_area(empty_weight)
         ar_each = span**2 / wing_area_each if wing_area_each > 0 else 0
 
@@ -131,25 +136,33 @@ def evaluate_config(
     # Per-slot drag factors (fixed by geometry)
     drag_factors = per_slot_drag_factor(N, span, config.lateral_overlap_ratio, config.geometry)
 
-    # Iterate: battery mass affects total weight affects speed affects drag
-    # affects power affects battery mass
-    battery_mass_total = 0.0  # start with zero battery
+    # Use beam model when AR is set (self-consistent structural sizing)
+    use_beam = config.aspect_ratio is not None
+
+    # Initialize iteration variables
+    battery_mass_total = 0.0
+    if use_beam:
+        # Start with empirical estimate, will be replaced by beam
+        struct_mass_each = structure.wing_mass(span, config.aspect_ratio)
+    else:
+        struct_mass_each = structure.wing_mass(span, config.aspect_ratio)
 
     for iteration in range(max_iterations):
-        # Total mass per aircraft (structure + hardware + payload + battery share)
+        # Total mass per aircraft
         batt_each = battery_mass_total / N
         total_mass_per = [struct_mass_each + hw + payload_mass_each + batt_each
                           for hw in hw_masses]
 
         # Weight distribution
         total_fleet_mass = sum(total_mass_per)
+        if total_fleet_mass <= 0:
+            break
         total_weight = total_fleet_mass * 9.81
         weights = [m / total_fleet_mass * total_weight for m in total_mass_per]
 
-        # Cruise speed: compute from wing loading when AR is set (self-consistent),
-        # otherwise use mission's fixed velocity (legacy behavior).
+        # Cruise speed
         max_weight = max(weights)
-        if config.aspect_ratio is not None:
+        if use_beam:
             velocity = _cruise_speed(max_weight, wing_area_each, rho)
         else:
             velocity = mission.velocity
@@ -181,11 +194,10 @@ def evaluate_config(
             hp_ordered = [hw_powers[i] for i in mass_order]
             hm_ordered = [hw_masses[i] for i in mass_order]
 
-        # Per-slot drag at computed cruise speed
+        # Per-slot drag
         total_induced = 0.0
         total_parasite = 0.0
         for i in range(N):
-            # Induced drag: D_i = factor * W^2 / (q * pi * e * b^2)
             di = drag_factors[i] * w_ordered[i]**2 / (
                 q * np.pi * mission.oswald_e * span**2)
             dp = q * wing_area_each * mission.cd0
@@ -225,12 +237,31 @@ def evaluate_config(
             night_hours=energy_result.night_hours,
         )
 
-        # Check convergence
-        if abs(new_battery_mass - battery_mass_total) < 0.01:
+        # Update structural mass from beam model (sized to actual loaded weight)
+        if use_beam:
+            # Each aircraft's structure must carry its own loaded weight
+            ac_mass_for_struct = max(total_mass_per)
+            new_struct = beam.wing_mass(span, ar_each, ac_mass_for_struct)
+        else:
+            new_struct = struct_mass_each  # empirical, doesn't change
+
+        # Check convergence (both battery and structure must settle)
+        batt_converged = abs(new_battery_mass - battery_mass_total) < 0.1
+        struct_converged = abs(new_struct - struct_mass_each) < 0.1
+
+        if batt_converged and struct_converged:
+            break
+
+        # Detect divergence: if mass is growing without bound, stop
+        if new_battery_mass > 1e6 or new_struct > 1e6 or not np.isfinite(new_battery_mass):
+            # Mark as diverged — results will show NaN/huge values
+            battery_mass_total = float('nan')
+            struct_mass_each = float('nan')
             break
 
         # Damped update for stability
-        battery_mass_total = 0.5 * battery_mass_total + 0.5 * new_battery_mass
+        battery_mass_total = 0.6 * battery_mass_total + 0.4 * new_battery_mass
+        struct_mass_each = 0.6 * struct_mass_each + 0.4 * new_struct
 
     # Final values
     control_mass_total = sum(hm_ordered)
@@ -239,11 +270,12 @@ def evaluate_config(
         control_mass_kg=control_mass_total, N=N)
     b_eff = effective_span(N, span, config.lateral_overlap_ratio, config.geometry)
 
-    # Wing loading
-    wing_loading = max(weights) / wing_area_each
+    # Wing loading and stall speed
+    wing_loading = max(weights) / wing_area_each if wing_area_each > 0 else 0
+    v_stall = np.sqrt(2 * max(weights) / (rho * wing_area_each * CL_MAX)) if wing_area_each > 0 else 0
 
-    # Stall speed
-    v_stall = np.sqrt(2 * max(weights) / (rho * wing_area_each * CL_MAX))
+    # Tip deflection from beam model
+    deflection_pct = beam.deflection_percent(span, ar_each, max(total_mass_per)) if use_beam else 0
 
     return {
         "N": N,
@@ -282,6 +314,7 @@ def evaluate_config(
         "energy_surplus_Wh": energy_result.surplus_Wh,
         "energy_closes": energy_result.closes,
         "day_hours": energy_result.day_hours,
+        "deflection_pct": deflection_pct,
         "iterations": iteration + 1,
         "mission": mission.name,
     }
