@@ -57,7 +57,7 @@ def evaluate_config(
     latitude_deg: float = 30.0,
     day_of_year: int = 172,
     panel_coverage: float = 0.8,
-    panel_efficiency: float = 0.25,
+    panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
 ) -> dict:
     structure = structure or EmpiricalStructure.from_data(SOLAR_HALE_DATA)
     N = config.N
