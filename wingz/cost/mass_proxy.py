@@ -1,5 +1,14 @@
 """
 Cost model using mass as a proxy. Avoids dollar values entirely.
+
+cost = (w_s * m_struct + w_c * m_ctrl) * N^alpha
+
+No published source — project-specific proxy. Per-unit cost data for
+solar HALE platforms is unavailable; mass serves as a reasonable proxy
+since heavier = more material = more expensive, and control hardware
+is more expensive per kg than airframe structure.
+
+See docs/formation_flight/references.md for discussion.
 """
 
 

@@ -1,7 +1,16 @@
 """
 Energy balance for 24-hour cycle closure.
+
 For 30+ day endurance, the aircraft must generate enough solar energy during
 the day to power flight AND charge batteries for the night.
+
+References:
+    Noth, A., "Design of Solar Powered Airplanes for Continuous Flight,"
+        PhD Thesis, ETH Zurich, 2008. (Definitive treatment)
+    Leutenegger, S. et al., "Solar Airplane Conceptual Design and Performance
+        Estimation," J. Intelligent & Robotic Systems, Vol. 61, 2011.
+
+See docs/formation_flight/references.md for full citations.
 """
 
 from dataclasses import dataclass
@@ -46,4 +55,5 @@ def compute_energy_balance(
 def required_battery_mass(
     power_required_W: float, night_hours: float, battery_energy_density_Wh_kg: float = 250.0,
 ) -> float:
+    """m_bat = P * t_night / energy_density. Default 250 Wh/kg (Li-ion). Ref: Noth (2008) Ch. 3."""
     return power_required_W * night_hours / battery_energy_density_Wh_kg

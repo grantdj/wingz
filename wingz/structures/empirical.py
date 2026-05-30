@@ -1,3 +1,23 @@
+"""
+Empirical wing mass scaling for solar/HALE aircraft.
+
+Power-law fit m_wing = a * b^n calibrated to real aircraft data.
+
+References:
+    Raymer, D.P., Aircraft Design: A Conceptual Approach, 6th ed., AIAA, 2018.
+        Ch. 15, Eq. 15.1-15.5. (Wing weight estimation methods)
+    Torenbeek, E., Synthesis of Subsonic Airplane Design, Springer, 1982.
+        Ch. 8. (Cantilever wing scaling)
+    Roskam, J., Airplane Design, Part V, DAR Corporation, 1999.
+        (Component weight estimation)
+
+The fitted exponent (~2.4) exceeds 2.0 due to stiffness-limited design at
+large spans. Euler-Bernoulli beam theory: delta = FL^3/(3EI) — deflection
+grows with span^3, requiring progressively heavier spars.
+
+See docs/formation_flight/references.md for full citations and data sources.
+"""
+
 from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import curve_fit

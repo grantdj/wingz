@@ -1,6 +1,17 @@
 """
 Bottom-up materials cost model.
 Estimates cost from component-level pricing.
+
+Cost = C_cf*m + C_solar*A + C_avionics*m_ctrl + C_bat*E + C_asm*m
+
+Default prices are order-of-magnitude estimates from market surveys:
+- Carbon fiber: ~$120/kg (aerospace composite layup)
+- Solar cells: ~$800/m^2 (Alta Devices / SunPower thin-film)
+- Avionics: ~$5000/kg (tactical UAV component costs)
+- Batteries: ~$300/kWh (2024 Li-ion cell-level)
+- Assembly: ~$200/kg structure (rough aerospace labor)
+
+See docs/formation_flight/references.md for discussion.
 """
 
 from __future__ import annotations
