@@ -2,7 +2,8 @@
 """
 Full converged analysis across formation configs.
 
-For each config, binary-searches for the payload power that gives 30% energy margin.
+For each config, binary-searches for continuous payload power while preserving
+24h energy feasibility. Battery sizing targets dawn_soc = 0.
 Uses a standalone fixed-speed convergence solver (struct + battery iteration).
 
 Usage:
@@ -25,6 +26,8 @@ from wingz.structures.beam import BeamStructure
 from wingz.solar.power import solar_irradiance, day_length_hours
 from wingz.aerodynamics.formation_aero import per_slot_drag_factor, FormationGeometry
 from wingz.cost.materials import fleet_cost, FleetCost
+
+PLD_G_PER_W = 50  # g/W payload specific mass
 
 
 # ── solver ──────────────────────────────────────────────────────────────────
@@ -103,7 +106,7 @@ def solve(N, span, AR=None, pld_power=0, pld_mass_each=0.0):
         converged = abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05
         if converged and i > 0:
             avail = total_area * 0.8 * 0.38 * avg_irr * day_h
-            margin = (avail - total_pwr * 24) / (total_pwr * 24)
+            solar_surplus_ratio = (avail - total_pwr * 24) / (total_pwr * 24)
             defl = beam.deflection_percent(span, AR, ac)
 
             fc = fleet_cost(
@@ -129,7 +132,7 @@ def solve(N, span, AR=None, pld_power=0, pld_mass_each=0.0):
                 "wing_loading": W / area_each,
                 "total_power": total_pwr,
                 "drag": drag,
-                "margin": margin,
+                "solar_surplus_ratio": solar_surplus_ratio,
                 "deflection_pct": defl,
                 "cost": fc.total,
                 "cost_breakdown": fc,
@@ -143,54 +146,31 @@ def solve(N, span, AR=None, pld_power=0, pld_mass_each=0.0):
     return None  # didn't converge
 
 
-def max_daytime_payload_power(N, span, target_margin=0.30):
-    """Compute max daytime payload power at 30% energy margin.
+def max_payload_power(N, span):
+    """Compute max continuous payload power that remains 24h energy feasible."""
+    lo, hi = 0.0, 20000.0
+    best = None
 
-    Daytime-only payload: powered only during the day (no night battery draw).
-    This avoids the mass spiral from payload-driven battery growth.
-    The 30% margin is on the day-night autonomous system power.
+    for _ in range(45):
+        mid = (lo + hi) / 2
+        payload_mass_each = mid * PLD_G_PER_W / 1000 / N
+        result = solve(N, span, pld_power=mid, pld_mass_each=payload_mass_each)
 
-    Returns (base_result, max_daytime_payload_W).
-    """
-    base = solve(N, span)
-    if base is None:
-        return None, None
+        if result is None or result["solar_surplus_ratio"] < 0:
+            hi = mid
+        else:
+            lo = mid
+            best = result
 
-    AR = base["AR"]
-    total_area = N * base["area_each"]
+    if best is None:
+        best = solve(N, span, pld_power=0.0, pld_mass_each=0.0)
+        if best is None:
+            return None
 
-    peak_irr = solar_irradiance(20000, 30, 172)
-    day_h = day_length_hours(30, 172)
-    avg_irr = (2 / np.pi) * peak_irr
-
-    # Available daytime solar energy
-    avail_Wh = total_area * 0.8 * 0.38 * avg_irr * day_h
-
-    # Required energy for base system at 30% margin
-    # E_avail / (1 + margin) = E_required
-    # 30% margin means: E_avail = E_required * 1.30
-    # So E_required = E_avail / 1.30
-    e_required_Wh = avail_Wh / (1 + target_margin)
-
-    # Base system uses: total_power * 24h
-    base_energy_Wh = base["total_power"] * 24
-
-    # Surplus available for daytime payload (only collected during day)
-    surplus_Wh = e_required_Wh - base_energy_Wh
-
-    if surplus_Wh <= 0:
-        # Base system already exceeds 30% margin budget
-        max_pld_pwr = 0.0
-    else:
-        # Payload power * day_h = surplus_Wh (payload only runs during day)
-        max_pld_pwr = surplus_Wh / day_h
-
-    # Return result with max payload power noted
-    result = dict(base)
-    result["max_daytime_payload_W"] = max(0.0, max_pld_pwr)
-    result["solar_available_Wh"] = avail_Wh
-    result["base_energy_Wh"] = base_energy_Wh
-    return result
+    best["max_payload_W"] = best["payload_power"]
+    best["solar_available_Wh"] = best["total_power"] * 24 * (1 + best["solar_surplus_ratio"])
+    best["energy_required_Wh"] = best["total_power"] * 24
+    return best
 
 
 # ── configs ──────────────────────────────────────────────────────────────────
@@ -211,11 +191,11 @@ CONFIGS = [
 
 
 def main():
-    print("Running converged sweep (binary-searching for 30% energy margin)...\n")
+    print("Running converged sweep (binary-searching 24h-feasible payload)...\n")
 
     results = []
     for label, N, span in CONFIGS:
-        r = max_daytime_payload_power(N, span)
+        r = max_payload_power(N, span)
         if r is None:
             print(f"  {label}: FAILED TO CONVERGE")
             continue
@@ -224,8 +204,8 @@ def main():
         r["span"] = span
         results.append(r)
         print(f"  {label}: converged in {r['iterations']} iters, "
-              f"AR={r['AR']:.1f}, max_pld={r['max_daytime_payload_W']:.0f}W, "
-              f"base_margin={r['margin']*100:.0f}%, cost=${r['cost']/1e6:.2f}M")
+              f"AR={r['AR']:.1f}, max_pld={r['max_payload_W']:.0f}W, "
+              f"energy_surplus={r['solar_surplus_ratio']*100:.1f}%, cost=${r['cost']/1e6:.2f}M")
 
     if not results:
         print("No configs converged!")
@@ -236,7 +216,7 @@ def main():
     header = (
         f"{'Config':<10} {'AR':>6} {'Chord':>7} {'Struct/ac':>10} "
         f"{'Bat/ac':>7} {'AC mass':>8} {'Fleet kg':>9} "
-        f"{'MaxPld W':>9} {'Cost $M':>8} {'kg/$M':>7} {'Defl%':>7} {'BaseMargin':>11}"
+        f"{'Pld W':>9} {'Pld kg':>8} {'Cost $M':>8} {'kg/$M':>7} {'Defl%':>7} {'Surplus':>9}"
     )
     print(header)
     print("-" * 130)
@@ -246,9 +226,10 @@ def main():
             f"{r['label']:<10} {r['AR']:>6.1f} {r['chord']:>7.2f} "
             f"{r['struct_each']:>10.2f} "
             f"{r['batt_each']:>7.2f} {r['ac_mass']:>8.2f} "
-            f"{r['fleet_mass']:>9.2f} {r['max_daytime_payload_W']:>9.0f} "
+            f"{r['fleet_mass']:>9.2f} {r['max_payload_W']:>9.0f} "
+            f"{r['payload_mass_total']:>8.1f} "
             f"{r['cost']/1e6:>8.3f} {kg_per_M:>7.1f} "
-            f"{r['deflection_pct']:>7.1f} {r['margin']*100:>10.0f}%"
+            f"{r['deflection_pct']:>7.1f} {r['solar_surplus_ratio']*100:>8.1f}%"
         )
     print("=" * 130)
 
@@ -257,18 +238,19 @@ def main():
     x = np.arange(len(labels))
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle("Converged Formation Sweep — 30% Energy Margin", fontsize=14)
+    fig.suptitle("Converged Formation Sweep — 24h-Feasible Payload", fontsize=14)
 
     # Panel 1: Per-aircraft mass breakdown (stacked bar)
     ax = axes[0, 0]
     hw_mass = np.array([2.5] * len(results))
     struct_mass = np.array([r["struct_each"] for r in results])
-    pld_mass = np.array([0.0] * len(results))  # zero-mass baseline config
+    pld_mass = np.array([r["payload_mass_total"] / r["N"] for r in results])
     batt_mass = np.array([r["batt_each"] for r in results])
 
     ax.bar(x, struct_mass, label="Structure", color="#2196F3")
     ax.bar(x, hw_mass, bottom=struct_mass, label="Hardware", color="#4CAF50")
-    ax.bar(x, batt_mass, bottom=struct_mass + hw_mass, label="Battery", color="#9C27B0")
+    ax.bar(x, pld_mass, bottom=struct_mass + hw_mass, label="Payload", color="#FF9800")
+    ax.bar(x, batt_mass, bottom=struct_mass + hw_mass + pld_mass, label="Battery", color="#9C27B0")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right")
     ax.set_ylabel("Mass per aircraft (kg)")
@@ -303,22 +285,22 @@ def main():
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3, axis="y")
 
-    # Panel 3: Max daytime payload power vs fleet cost (scatter, labeled)
+    # Panel 3: Max continuous payload power vs fleet cost (scatter, labeled)
     ax = axes[1, 0]
-    pld_pwr = np.array([r["max_daytime_payload_W"] for r in results])
+    pld_pwr = np.array([r["max_payload_W"] for r in results])
     costs_M = np.array([r["cost"] / 1e6 for r in results])
     ax.scatter(pld_pwr, costs_M, s=80, zorder=5)
     for r in results:
         ax.annotate(
             r["label"],
-            xy=(r["max_daytime_payload_W"], r["cost"] / 1e6),
+            xy=(r["max_payload_W"], r["cost"] / 1e6),
             xytext=(4, 4),
             textcoords="offset points",
             fontsize=8,
         )
-    ax.set_xlabel("Max daytime payload power at 30% margin (W)")
+    ax.set_xlabel("Max 24h-feasible continuous payload power (W)")
     ax.set_ylabel("Fleet cost ($M)")
-    ax.set_title("Max Payload Power (30% margin) vs Fleet Cost")
+    ax.set_title("Payload Power vs Fleet Cost")
     ax.grid(True, alpha=0.3)
 
     # Panel 4: kg/$M bar chart

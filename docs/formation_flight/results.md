@@ -55,7 +55,7 @@ Same configuration evaluated across mission altitudes:
 
 ## Payload Capacity (4x15m heavy_wake, 20km)
 
-Mass margin and energy impact across payload options:
+Mass and energy impact across payload options:
 
 | Payload | PldMass(kg) | PldPwr(W) | TotalMass(kg) | MassWithBatt(kg) | Battery(kg) | Surplus(Wh) |
 | --- | --- | --- | --- | --- | --- | --- |

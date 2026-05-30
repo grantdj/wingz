@@ -215,7 +215,7 @@ Used in: `wingz/solar/energy_balance.py`
 Default ε = 250 Wh/kg (current Li-ion). Near-term Li-S: ~400 Wh/kg. The
 nominal `f_capacity = 1.0` target corresponds to `dawn_soc = 0`; values above
 1.0 are installed-capacity derating factors for usable fraction, charge losses,
-or end-of-life degradation. They are not dawn margin.
+or end-of-life degradation. They do not change the `dawn_soc = 0` target.
 
 - Noth (2008), Chapter 3 — battery sizing for solar aircraft
 

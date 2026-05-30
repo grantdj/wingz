@@ -85,7 +85,7 @@ The 2x30m configuration deserves special attention:
 - **Lowest control complexity** — only one pair to coordinate
 - **Half the solar cost** of single 60m ($2.16M vs $4.32M)
 - **50-55% the total cost** across all payload missions
-- **Enough energy margin** for substantial payloads (400%+ at 200W)
+- **Enough energy capacity** for substantial payloads (400%+ at 200W)
 - **Graceful degradation** — lose the follower, the leader can still fly solo
 
 At every mission payload level, the 2x30m costs roughly half what the 1x60m

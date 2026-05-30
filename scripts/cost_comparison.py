@@ -2,7 +2,8 @@
 """
 Cost vs payload analysis with realistic pricing.
 
-For each config, sweeps payload power from 0 to max (where margin hits 30%),
+For each config, sweeps continuous payload power from 0 to the maximum that
+preserves 24h energy feasibility,
 computing cost using fleet_cost() from wingz.cost.materials.
 
 Usage:
@@ -39,7 +40,6 @@ RHO = 0.0889
 V_CRUISE = 25.0
 LAT_DEG = 30.0
 DOY = 172
-TARGET_MARGIN = 0.30
 PLD_G_PER_W = 50  # g/W payload specific mass
 
 CONFIGS = [
@@ -60,11 +60,12 @@ def _choose_ar(span):
     return float(np.clip(ar, 6.0, 14.0))
 
 
-def _solve_base(N, span):
-    """Converge base aircraft (no payload). Returns result dict."""
+def _solve_config(N, span, pld_power=0.0):
+    """Converge an aircraft/fleet at a continuous payload power."""
     rho = RHO
     g = G
     hw = 2.5
+    pld_mass_each = pld_power * PLD_G_PER_W / 1000 / N
 
     AR = _choose_ar(span)
     area_each = span ** 2 / AR
@@ -84,7 +85,7 @@ def _solve_base(N, span):
     beam = BeamStructure()
 
     for _ in range(300):
-        ac = struct_each + hw + batt_each
+        ac = struct_each + hw + pld_mass_each + batt_each
         W = ac * g
         V_cruise = 1.3 * np.sqrt(2 * W / (rho * area_each * CL_MAX))
         q = 0.5 * rho * V_cruise ** 2
@@ -94,7 +95,7 @@ def _solve_base(N, span):
             + q * area_each * CD0
             for j in range(N)
         )
-        total_pwr = drag * V_cruise + hw_pwr + sk_total
+        total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
         new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
@@ -103,7 +104,7 @@ def _solve_base(N, span):
 
         if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05:
             avail = total_area * PANEL_COVERAGE * PANEL_EFF * avg_irr * day_h
-            margin = (avail - total_pwr * 24) / (total_pwr * 24)
+            solar_surplus_ratio = (avail - total_pwr * 24) / (total_pwr * 24)
             fc = fleet_cost(
                 N=N,
                 structural_mass_kg=new_struct * N,
@@ -119,7 +120,9 @@ def _solve_base(N, span):
                 "struct_each": new_struct, "batt_each": new_batt,
                 "ac_mass": ac, "fleet_mass": N * ac,
                 "V_cruise": V_cruise,
-                "total_power": total_pwr, "margin": margin,
+                "total_power": total_pwr, "solar_surplus_ratio": solar_surplus_ratio,
+                "payload_power": pld_power,
+                "payload_mass_total": pld_mass_each * N,
                 "cost": fc.total, "cost_breakdown": fc,
                 "avail_Wh": avail, "day_h": day_h, "night_h": night_h,
             }
@@ -130,45 +133,35 @@ def _solve_base(N, span):
     return None
 
 
-def daytime_payload_sweep(N, span, n_points=25):
-    """Sweep daytime-only payload power from 0 to max (30% system margin).
+def _max_payload_power(N, span):
+    """Find max continuous payload power that remains 24h energy feasible."""
+    lo, hi = 0.0, 20000.0
+    best = None
 
-    Daytime-only payload: powered only during the day; no additional night
-    battery needed. This cleanly avoids the mass spiral and shows the
-    platform's true payload capacity.
+    for _ in range(45):
+        mid = (lo + hi) / 2
+        result = _solve_config(N, span, pld_power=mid)
 
-    Returns list of result dicts with varying payload_power.
-    """
-    base = _solve_base(N, span)
-    if base is None:
-        return []
+        if result is None or result["solar_surplus_ratio"] < 0:
+            hi = mid
+        else:
+            lo = mid
+            best = result
 
-    avail_Wh = base["avail_Wh"]
-    day_h = base["day_h"]
-    base_pwr = base["total_power"]
+    if best is None:
+        best = _solve_config(N, span, pld_power=0.0)
+    return 0.0 if best is None else best["payload_power"]
 
-    # At 30% system margin: available for payload = avail/1.30 - base_pwr*24
-    max_pld_energy_Wh = avail_Wh / (1 + TARGET_MARGIN) - base_pwr * 24
-    if max_pld_energy_Wh <= 0:
-        return [base]  # system already at margin with no payload
 
-    max_pld_pwr = max_pld_energy_Wh / day_h
+def payload_power_sweep(N, span, n_points=25):
+    """Sweep continuous payload power across the 24h-feasible range."""
+    max_pld_pwr = _max_payload_power(N, span)
 
     rows = []
     for pld_pwr in np.linspace(0, max_pld_pwr, n_points):
-        # Cost increases with payload power because solar panels must be sized
-        # to support it + system needs, but aircraft mass is unchanged.
-        # Here we add the payload power cost to the fleet cost.
-        r = dict(base)
-        r["payload_power"] = pld_pwr
-        # Additional solar energy for payload: pld_pwr * day_h
-        # => extra solar panel area needed (at avg irradiance)
-        peak_irr = solar_irradiance(20000, LAT_DEG, DOY)
-        avg_irr = (2 / np.pi) * peak_irr
-        # Current solar panels already cover base + payload at 30% margin
-        # Use existing panels, just report cost as-is (no new panels needed)
-        r["effective_margin"] = (avail_Wh - (base_pwr + pld_pwr) * 24) / ((base_pwr + pld_pwr) * 24)
-        rows.append(r)
+        result = _solve_config(N, span, pld_power=pld_pwr)
+        if result is not None:
+            rows.append(result)
 
     return rows
 
@@ -180,14 +173,14 @@ def main():
     max_payloads = {}
 
     for label, N, span in CONFIGS:
-        print(f"  {label}: sweeping daytime payload power...")
-        rows = daytime_payload_sweep(N, span, n_points=25)
+        print(f"  {label}: sweeping continuous payload power...")
+        rows = payload_power_sweep(N, span, n_points=25)
         if not rows:
             print(f"    -> no valid range found")
             continue
         config_data[label] = rows
         max_payloads[label] = rows[-1]["payload_power"]
-        print(f"    -> max daytime payload = {max_payloads[label]:.0f} W @ 30% margin, "
+        print(f"    -> max 24h-feasible continuous payload = {max_payloads[label]:.0f} W, "
               f"cost = ${rows[-1]['cost']/1e6:.2f}M")
 
     if not config_data:
@@ -241,13 +234,13 @@ def main():
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Panel 4: Cost breakdown at 30% margin (stacked bar)
+    # Panel 4: Cost breakdown at max feasible payload (stacked bar)
     ax = axes[1, 1]
     labels_at_max = []
     cb_list = []
 
     for label, rows in config_data.items():
-        # Use the last row (at max payload power, closest to 30% margin)
+        # Use the last row at max payload power.
         best = rows[-1]
         labels_at_max.append(label)
         cb_list.append(best["cost_breakdown"])
@@ -274,7 +267,7 @@ def main():
     ax.set_xticks(x)
     ax.set_xticklabels(labels_at_max, rotation=20, ha="right")
     ax.set_ylabel("Cost ($M)")
-    ax.set_title("Cost Breakdown at 30% Energy Margin")
+    ax.set_title("Cost Breakdown at Max Feasible Payload")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3, axis="y")
 

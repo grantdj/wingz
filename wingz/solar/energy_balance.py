@@ -61,9 +61,9 @@ def required_battery_mass(
     m_bat = P * t_night * capacity_factor / energy_density.
 
     Nominal design target: dawn_soc = 0 after a full day/night cycle.
-    capacity_factor is not dawn margin; use values > 1 only for explicit
-    installed-capacity derating such as usable fraction, charge losses, or
-    end-of-life degradation.
+    Use capacity_factor values > 1 only for explicit installed-capacity
+    derating such as usable fraction, charge losses, or end-of-life
+    degradation.
     Ref: Noth (2008) Ch. 3.
     """
     return power_required_W * night_hours * capacity_factor / battery_energy_density_Wh_kg

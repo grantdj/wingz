@@ -91,6 +91,7 @@ def evaluate_config(
     day_of_year: int = 172,
     panel_coverage: float = 0.8,
     panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
+    propulsion_efficiency: float = 0.75,  # combined prop × motor × ESC
     max_iterations: int = 80,
 ) -> dict:
     """
@@ -217,9 +218,10 @@ def evaluate_config(
 
         # Power
         thrust_power = total_drag * velocity
+        propulsion_power = thrust_power / propulsion_efficiency
         total_hw_power = sum(hp_ordered)
         total_payload_power = config.payload.power_W
-        total_power = thrust_power + total_hw_power + sk_total + total_payload_power
+        total_power = propulsion_power + total_hw_power + sk_total + total_payload_power
 
         # Energy balance
         energy_result = compute_energy_balance(
@@ -303,6 +305,8 @@ def evaluate_config(
         "parasite_drag_N": total_parasite,
         "total_drag_N": total_drag,
         "thrust_power_W": thrust_power,
+        "propulsion_power_W": propulsion_power,
+        "propulsion_efficiency": propulsion_efficiency,
         "hw_power_W": total_hw_power,
         "sk_power_W": sk_total,
         "payload_power_total_W": total_payload_power,

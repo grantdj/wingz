@@ -111,7 +111,7 @@ def altitude_comparison():
 
 
 def payload_capacity_comparison(mission):
-    """Show mass margin and energy impact across payload options."""
+    """Show mass and energy impact across payload options."""
     rows = []
     for label, payload in PAYLOAD_CASES:
         config = AircraftConfig(
@@ -258,7 +258,7 @@ def main():
     # Payload capacity
     lines.append("## Payload Capacity (4x15m heavy_wake, 20km)")
     lines.append("")
-    lines.append("Mass margin and energy impact across payload options:")
+    lines.append("Mass and energy impact across payload options:")
     lines.append("")
     pay_df = payload_capacity_comparison(mission)
     pay_cols = ["payload_label", "payload_mass_kg", "payload_power_W",

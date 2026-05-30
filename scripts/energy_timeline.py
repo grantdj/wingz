@@ -103,9 +103,8 @@ def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
         )
         total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
 
-        # Battery sized for night survival with 30% margin
-        # (extra 30% ensures battery lasts even if it doesn't fully charge)
-        new_batt = total_pwr * night_h * 1.3 / BATT_ENERGY_DENSITY / N
+        # Battery sized so usable capacity reaches zero at dawn under nominal night load.
+        new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
@@ -201,8 +200,8 @@ def simulate_24h(cfg_dict):
     }
 
 
-def _find_payload_for_margin(N, span, target_margin=0.30):
-    """Binary search for payload power that gives target energy margin."""
+def _find_payload_for_energy_feasibility(N, span):
+    """Binary search for max 24h-feasible continuous payload power."""
     peak_irr = solar_irradiance(CRUISE_ALT_M, LAT_DEG, DOY)
     day_h = day_length_hours(LAT_DEG, DOY)
     avg_irr = (2 / np.pi) * peak_irr
@@ -215,8 +214,8 @@ def _find_payload_for_margin(N, span, target_margin=0.30):
             hi = mid
             continue
         avail = N * r["area_each"] * PANEL_COVERAGE * PANEL_EFF * avg_irr * day_h
-        margin = (avail - r["total_power"] * 24) / (r["total_power"] * 24)
-        if margin > target_margin:
+        surplus_ratio = (avail - r["total_power"] * 24) / (r["total_power"] * 24)
+        if surplus_ratio >= 0:
             lo = mid
         else:
             hi = mid
@@ -225,11 +224,11 @@ def _find_payload_for_margin(N, span, target_margin=0.30):
 
 def main():
     print("Simulating 24h energy profiles at cruise altitude...")
-    print("Finding payload for 30% energy margin, then simulating 24h cycle.\n")
+    print("Finding max 24h-feasible continuous payload, then simulating 24h cycle.\n")
 
     datasets = []
     for N, span in CONFIGS:
-        pld_pwr = _find_payload_for_margin(N, span, target_margin=0.30)
+        pld_pwr = _find_payload_for_energy_feasibility(N, span)
         r = solve(N, span, pld_power=pld_pwr)
         if r is None:
             print(f"  {N}x{span}m: FAILED TO CONVERGE")
