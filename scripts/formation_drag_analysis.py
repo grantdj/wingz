@@ -17,29 +17,78 @@ if SAVE:
     matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from wingz.aerodynamics.formation_aero import per_slot_drag_factor, effective_span, FormationGeometry
 
 
+def _draw_mini_formation(ax_inset, geo, N, span=1.0):
+    """Draw a small top-down formation diagram with numbered slots."""
+    overlap = 0.1
+    gap = span * (1 - overlap)
+    sep = span * 1.5
+
+    if geo == FormationGeometry.V:
+        positions = [(0, 0)]
+        depth = 1; idx = 1
+        while idx < N:
+            x = depth * gap; y = -depth * sep
+            positions.append((-x, y)); idx += 1
+            if idx < N:
+                positions.append((x, y)); idx += 1
+            depth += 1
+    elif geo == FormationGeometry.ECHELON:
+        positions = [(i * gap, -i * sep) for i in range(N)]
+    else:  # inline
+        positions = [(0, -i * sep) for i in range(N)]
+
+    cmap = plt.cm.RdYlGn
+    factors = per_slot_drag_factor(N, span, overlap, geo)
+
+    for i, (x, y) in enumerate(positions):
+        color = cmap(1 - factors[i])
+        ax_inset.plot([x - span / 2, x + span / 2], [y, y],
+                      color=color, lw=2.5, solid_capstyle='round')
+        ax_inset.text(x, y + sep * 0.25, str(i), ha='center', va='center',
+                      fontsize=7, fontweight='bold',
+                      bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='gray', alpha=0.8))
+
+    ax_inset.set_aspect('equal')
+    ax_inset.set_xlim(-N * gap, N * gap)
+    pad = sep * 0.5
+    ys = [p[1] for p in positions]
+    ax_inset.set_ylim(min(ys) - pad, max(ys) + pad * 2)
+    ax_inset.axis('off')
+
+
 def main():
-    fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
 
     span = 20
     overlap = 0.1
+    N_show = 5  # N for the inset diagrams
 
-    # Top row: drag reduction per slot
+    # Top row: drag reduction per slot with inset formation diagrams
     for idx, geo in enumerate([FormationGeometry.V, FormationGeometry.ECHELON, FormationGeometry.INLINE]):
         ax = axes[0, idx]
+
         for N in [2, 3, 4, 5, 6, 8]:
             factors = per_slot_drag_factor(N, span, overlap, geo)
             reductions = [(1 - f) * 100 for f in factors]
             ax.bar([s + (N - 2) * 0.12 for s in range(N)], reductions,
                    width=0.1, label=f"N={N}", alpha=0.8)
-        ax.set_xlabel("Slot position (0=leader)")
+
+        ax.set_xlabel("Slot position (0 = leader)")
         ax.set_ylabel("Drag reduction (%)")
         ax.set_title(f"{geo.value.upper()} Formation")
-        ax.legend(fontsize=7, ncol=2)
+        ax.legend(fontsize=7, ncol=2, loc='upper left')
         ax.grid(True, alpha=0.3, axis="y")
         ax.set_ylim(0, 80)
+
+        # Inset diagram showing slot positions
+        ax_inset = inset_axes(ax, width="30%", height="45%", loc='upper right',
+                              borderpad=1.5)
+        _draw_mini_formation(ax_inset, geo, N_show)
 
     # Bottom left: effective span vs N
     ax = axes[1, 0]
@@ -53,7 +102,7 @@ def main():
         ax.plot(list(Ns), b_effs, color=color, ls=ls, lw=2, marker="o",
                 markersize=5, label=geo.value)
     ax.plot(list(Ns), [N * span for N in Ns], "k--", alpha=0.3,
-            label="N×span (max)")
+            label="N*span (max)")
     ax.set_xlabel("Number of aircraft (N)")
     ax.set_ylabel("Effective span (m)")
     ax.set_title(f"Effective Span vs Fleet Size (span={span}m, overlap=10%)")
@@ -73,22 +122,19 @@ def main():
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Bottom right: top-down view
+    # Bottom right: large top-down view with detail
     ax = axes[1, 2]
     N = 5
     gap = span * (1 - overlap)
     streamwise = span * 2
+
     positions = [(0, 0)]
-    depth = 1
-    i = 1
+    depth = 1; i = 1
     while i < N:
-        x = depth * gap
-        y = -depth * streamwise
-        positions.append((-x, y))
-        i += 1
+        x = depth * gap; y = -depth * streamwise
+        positions.append((-x, y)); i += 1
         if i < N:
-            positions.append((x, y))
-            i += 1
+            positions.append((x, y)); i += 1
         depth += 1
 
     factors = per_slot_drag_factor(N, span, overlap, FormationGeometry.V)
@@ -99,10 +145,16 @@ def main():
         ax.plot([x - span / 2, x + span / 2], [y, y], color=color, lw=4)
         ax.plot(x, y, "ko", markersize=4)
         red = (1 - factors[i]) * 100
-        label = "Leader" if i == 0 else f"F{i}"
-        ax.annotate(f"{label}\n-{red:.0f}%", (x, y),
-                    textcoords="offset points", xytext=(0, 12),
-                    ha="center", fontsize=9, fontweight="bold")
+        if i == 0:
+            label = f"0: Leader\n0% reduction"
+        else:
+            label = f"{i}: F{i}\n-{red:.0f}%"
+        ax.annotate(label, (x, y),
+                    textcoords="offset points", xytext=(0, 14),
+                    ha="center", fontsize=9, fontweight="bold",
+                    bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='gray', alpha=0.8))
+
+        # Wake arrows from wingtips
         ax.annotate("", xy=(x - span / 2 - 3, y - streamwise * 0.8),
                     xytext=(x - span / 2, y),
                     arrowprops=dict(arrowstyle="->", color="gray", alpha=0.3, lw=1))
@@ -113,9 +165,10 @@ def main():
     ax.set_aspect("equal")
     ax.set_xlabel("Lateral position (m)")
     ax.set_ylabel("Streamwise position (m)")
-    ax.set_title(f"V Formation — N=5, span={span}m, 10% overlap\n"
+    ax.set_title(f"V Formation — N={N}, span={span}m, 10% overlap\n"
                  "Color: green=low drag, red=full drag")
     ax.grid(True, alpha=0.2)
+
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 100))
     sm.set_array([])
     plt.colorbar(sm, ax=ax, label="Drag reduction (%)")
