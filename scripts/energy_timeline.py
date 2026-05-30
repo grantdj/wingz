@@ -60,15 +60,17 @@ def _choose_ar(span):
     return float(np.clip(ar, 6.0, 14.0))
 
 
-def solve(N, span, AR=None, pld_power=0):
+def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
     """Fixed-AR self-consistent solver.
 
     Wing area = span² / AR (fixed geometry).
     Cruise speed from wing loading.
+    Includes payload mass in convergence loop.
     """
     rho = RHO_CRUISE
     g = G
     hw = 2.5
+    pld_mass_each = pld_power * pld_g_per_W / 1000 / N
 
     if AR is None:
         AR = _choose_ar(span)
@@ -87,7 +89,7 @@ def solve(N, span, AR=None, pld_power=0):
     beam = BeamStructure()
 
     for _ in range(300):
-        ac = struct_each + hw + batt_each
+        ac = struct_each + hw + pld_mass_each + batt_each
         W = ac * g
 
         # Cruise speed from wing loading (self-consistent)
@@ -197,12 +199,37 @@ def simulate_24h(cfg_dict):
     }
 
 
+def _find_payload_for_margin(N, span, target_margin=0.30):
+    """Binary search for payload power that gives target energy margin."""
+    peak_irr = solar_irradiance(CRUISE_ALT_M, LAT_DEG, DOY)
+    day_h = day_length_hours(LAT_DEG, DOY)
+    avg_irr = (2 / np.pi) * peak_irr
+
+    lo, hi = 0, 20000
+    for _ in range(45):
+        mid = (lo + hi) / 2
+        r = solve(N, span, pld_power=mid)
+        if r is None:
+            hi = mid
+            continue
+        avail = N * r["area_each"] * PANEL_COVERAGE * PANEL_EFF * avg_irr * day_h
+        margin = (avail - r["total_power"] * 24) / (r["total_power"] * 24)
+        if margin > target_margin:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
 def main():
-    print("Simulating 24h energy profiles at cruise altitude (empty-battery start)...\n")
+    print("Simulating 24h energy profiles at cruise altitude...")
+    print("Finding payload for 30% energy margin, then simulating 24h cycle.\n")
 
     datasets = []
     for label, N, span, ar_approx in CONFIGS:
-        r = solve(N, span)
+        # Find payload at 30% margin
+        pld_pwr = _find_payload_for_margin(N, span, target_margin=0.30)
+        r = solve(N, span, pld_power=pld_pwr)
         if r is None:
             print(f"  {label}: FAILED TO CONVERGE")
             continue
@@ -211,8 +238,8 @@ def main():
         sim["N"] = N
         sim["span"] = span
         datasets.append(sim)
-        print(f"  {label}: req={r['total_power']:.0f}W, "
-              f"batt_cap={r['batt_capacity_Wh']:.0f}Wh/ac, AR={r['AR']:.1f}")
+        print(f"  {label}: pld={pld_pwr:.0f}W, req={r['total_power']:.0f}W, "
+              f"batt_cap={r['batt_capacity_Wh']:.0f}Wh/ac, ac={r['ac_mass']:.0f}kg, AR={r['AR']:.1f}")
 
     if not datasets:
         print("No configs converged!")
