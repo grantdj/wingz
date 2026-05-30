@@ -261,6 +261,22 @@ Component pricing based on market surveys:
 These are order-of-magnitude estimates. The materials cost model is a
 research area that will evolve as better data becomes available.
 
+## Atmosphere Model
+
+### International Standard Atmosphere
+
+Used in: `wingz/mission/atmosphere.py`
+
+T = T₀ - L·h (troposphere, 0-11km)
+T = T_tropopause (lower stratosphere, 11-20km)
+P = P₀ · (T/T₀)^(g/(L·R)) (troposphere)
+P = P_trop · exp(-g·(h-h_trop)/(R·T_trop)) (stratosphere)
+ρ = P/(R·T) (ideal gas)
+
+References:
+    ICAO Standard Atmosphere, ICAO Doc 7488/3, 1993.
+    US Standard Atmosphere, 1976 (NASA-TM-X-74335).
+
 ## Thrust Power
 
 `P_thrust = D · V`

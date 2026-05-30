@@ -48,7 +48,7 @@ python scripts/sensitivity_analysis.py --save # save to docs/
 - `wingz/solar/` — solar power and energy balance
 - `wingz/control/` — formation architectures and station-keeping
 - `wingz/cost/` — mass-proxy and bottom-up cost models
-- `wingz/mission/` — mission profile definitions
+- `wingz/mission/` — mission profile definitions, atmosphere model (`atmosphere.py`), payload model (`payload.py`)
 - `wingz/evaluation/` — parameter sweeps and Pareto analysis
 - `wingz/visualization/` — matplotlib plotting
 
@@ -87,3 +87,26 @@ Three architectures modeled:
 For 30+ day missions, every aircraft must close a 24-hour energy cycle.
 The battery mass feedback loop (more battery → more weight → more drag →
 more power → more battery) is the critical sizing constraint.
+
+**Energy closure is the primary feasibility gate in the sweep engine.** A
+design is only considered viable if it closes the 24-hour energy cycle; all
+other metrics (mass, cost, drag) are secondary to this constraint.
+
+### Payload Capacity
+
+Payload mass and power draw are explicit inputs to the energy balance. Payload
+capacity — how much useful payload a design can carry while still closing the
+energy balance — is a key output metric alongside cost and total mass.
+
+### Altitude Sweeps
+
+The atmosphere model (`wingz/mission/atmosphere.py`) implements the ISA standard
+atmosphere for the troposphere and lower stratosphere (0–20 km). This enables
+altitude as a sweep parameter: density, temperature, and pressure are computed
+from altitude rather than hard-coded per mission profile.
+
+### Aspect Ratio as Independent Parameter
+
+Aspect ratio (AR) can be swept independently of span. Fixing AR while varying
+span (or vice versa) separates the structural and aerodynamic tradeoffs and
+allows the sweep engine to explore the full design space more efficiently.

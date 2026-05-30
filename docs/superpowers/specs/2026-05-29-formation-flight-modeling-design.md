@@ -1,5 +1,18 @@
 # Formation Flight Modeling — Design Spec
 
+> **Implementation status (updated 2026-05-29):** The following features from this
+> spec have been implemented:
+> - **Atmosphere model** (`wingz/mission/atmosphere.py`) — ISA standard atmosphere
+>   covering troposphere and lower stratosphere (0–20 km); enables altitude as a
+>   sweep parameter.
+> - **Payload model** (`wingz/mission/payload.py`) — payload mass and power draw
+>   as explicit design inputs; payload capacity surfaced as an output metric.
+> - **Energy balance integration** — the sweep engine now uses 24h energy cycle
+>   closure as a feasibility gate; designs that fail closure are excluded from
+>   downstream analysis.
+> - **Aspect ratio as independent parameter** — AR can be swept independently of
+>   span, decoupling structural and aerodynamic tradeoffs in the sweep engine.
+
 ## Overview
 
 This project investigates whether a fleet of smaller autonomous solar-powered aircraft
@@ -57,6 +70,8 @@ wingz/                      # importable Python package
     __init__.py
     profiles.py             # mission definitions (HALE 20km, lower-altitude LE)
     endurance.py            # 24h energy cycle closure check
+    atmosphere.py           # ISA standard atmosphere (0-20 km)
+    payload.py              # payload mass/power definitions
   evaluation/
     __init__.py
     sweep.py                # parameter sweep engine
@@ -263,6 +278,9 @@ Reusable matplotlib plotting functions:
 | Lateral spacing | -0.2 to 1.0 span overlap | Negative = overlap, positive = gap |
 | Formation geometry | V, echelon, inline | Affects which aircraft get wake benefit |
 | Mission profile | HALE 20km, lower-altitude LE | Two altitude regimes |
+| Altitude | 0-20 km | ISA atmosphere model; density/pressure computed from altitude |
+| Aspect ratio | Independent of span | AR can be fixed or swept separately from span |
+| Payload mass | kg | Explicit input; payload capacity is a key output metric |
 | Latitude | 0-60° | Drives solar availability |
 | Season | Summer/equinox/winter solstice | Worst case for endurance closure |
 
