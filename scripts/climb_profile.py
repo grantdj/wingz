@@ -118,13 +118,17 @@ def simulate(N, span, dt_min=6, total_h=48):
         ac = struct_each + hw_per_ac + batt_each
         W_cruise = ac * G
 
-        # Cruise speed from wing loading (self-consistent)
-        V_cruise = 1.3 * np.sqrt(2 * W_cruise / (rho_cruise * area_each * CL_MAX))
-        V_cruise = max(V_cruise, 3.0)
+        # Day cruise speed (1.15x stall) for solar/energy calculations
+        V_stall_cruise = np.sqrt(2 * W_cruise / (rho_cruise * area_each * CL_MAX))
+        V_cruise = max(1.15 * V_stall_cruise, 3.0)
+
+        # Night cruise speed (1.03x stall) for battery sizing
+        V_night = max(1.03 * V_stall_cruise, 3.0)
 
         pwr_cruise = _level_power(W_cruise, span, area_each, rho_cruise, V_cruise, factors, N)
-        total_pwr = pwr_cruise + hw_pwr
-        new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
+        pwr_night = _level_power(W_cruise, span, area_each, rho_cruise, V_night, factors, N)
+        total_pwr_night = pwr_night + hw_pwr
+        new_batt = total_pwr_night * night_h / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
@@ -173,16 +177,18 @@ def simulate(N, span, dt_min=6, total_h=48):
 
         # Wing area (fixed from initial sizing), adjust V for current density
         W_N = ac_mass * G
-        # cruise speed at current density (constant wing loading)
-        V = np.sqrt(2 * W_N / (rho * wing_area_each * CL_MAX)) * 1.3 / np.sqrt(1.3)
-        V = max(V, 5.0)
-
-        total_area = N * wing_area_each
-        lvl_pwr = _level_power(W_N, span, wing_area_each, rho, V, factors, N) + hw_pwr
+        V_stall_local = np.sqrt(2 * W_N / (rho * wing_area_each * CL_MAX))
 
         # Hour of day (wrap to 0-24)
         t_local = t_h % 24.0
+        total_area = N * wing_area_each
         sol_pwr = _solar_power_at(alt, total_area, t_local)
+
+        # Day/night speed: 1.15x stall during day, 1.03x at night
+        is_day = sol_pwr > 0
+        V = max(V_stall_local * (1.15 if is_day else 1.03), 5.0)
+
+        lvl_pwr = _level_power(W_N, span, wing_area_each, rho, V, factors, N) + hw_pwr
 
         net = sol_pwr - lvl_pwr
 
