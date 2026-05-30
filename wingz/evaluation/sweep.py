@@ -4,7 +4,7 @@ aircraft or formation configuration.
 """
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
 from typing import Optional
 
@@ -20,6 +20,8 @@ from wingz.control.architectures import (
 from wingz.control.station_keeping import station_keeping_power
 from wingz.cost.mass_proxy import mass_proxy_cost
 from wingz.mission.profiles import MissionProfile
+from wingz.mission.payload import Payload, no_payload
+from wingz.solar.energy_balance import compute_energy_balance, required_battery_mass
 from wingz.structures.empirical import EmpiricalStructure, SOLAR_HALE_DATA
 
 
@@ -37,12 +39,25 @@ class AircraftConfig:
     position_strategy: PositionStrategy
     geometry: FormationGeometry
     lateral_overlap_ratio: float
+    aspect_ratio: Optional[float] = None  # if set, overrides wing_loading for area calc
+    payload: Payload = field(default_factory=no_payload)
+
+
+def _wing_area_from_config(config: AircraftConfig, weight_N: float, mission: MissionProfile) -> float:
+    """Compute wing area. If AR is set, use S = b^2/AR. Otherwise use wing loading."""
+    if config.aspect_ratio is not None:
+        return config.span_each_m**2 / config.aspect_ratio
+    return mission.wing_area(weight_N)
 
 
 def evaluate_config(
     config: AircraftConfig,
     mission: MissionProfile,
     structure: Optional[EmpiricalStructure] = None,
+    latitude_deg: float = 30.0,
+    day_of_year: int = 172,
+    panel_coverage: float = 0.8,
+    panel_efficiency: float = 0.25,
 ) -> dict:
     structure = structure or EmpiricalStructure.from_data(SOLAR_HALE_DATA)
     N = config.N
@@ -56,8 +71,12 @@ def evaluate_config(
     # Structural mass per aircraft
     struct_mass_each = structure.wing_mass(span)
 
-    # Total mass per aircraft
-    total_mass_per = [struct_mass_each + hw for hw in hw_masses]
+    # Payload mass — distributed evenly across fleet for now
+    payload_mass_each = config.payload.mass_kg / N
+    payload_power_each = config.payload.power_W / N
+
+    # Total mass per aircraft (structure + hardware + payload share)
+    total_mass_per = [struct_mass_each + hw + payload_mass_each for hw in hw_masses]
 
     # Weight distribution
     total_fleet_mass = sum(total_mass_per)
@@ -91,12 +110,27 @@ def evaluate_config(
         hw_powers = [hw_powers[i] for i in mass_order]
         hw_masses = [hw_masses[i] for i in mass_order]
 
+    # Wing area — per aircraft, using AR if set
+    wing_areas = [_wing_area_from_config(config, w, mission) for w in weights]
+    total_wing_area = sum(wing_areas)
+
+    # Aspect ratio (computed or from config)
+    if config.aspect_ratio is not None:
+        ar_each = config.aspect_ratio
+    else:
+        ar_each = span**2 / wing_areas[0] if wing_areas[0] > 0 else 0
+
     # Per-slot drag
     slot_induced_drags = []
     slot_parasite_drags = []
     for i in range(N):
         di = induced_drag(weights[i], span, mission, formation_factor=drag_factors[i])
-        dp = parasite_drag(weights[i], mission)
+        # Parasite drag uses actual wing area if AR is specified
+        if config.aspect_ratio is not None:
+            q = mission.dynamic_pressure()
+            dp = q * wing_areas[i] * mission.cd0
+        else:
+            dp = parasite_drag(weights[i], mission)
         slot_induced_drags.append(di)
         slot_parasite_drags.append(dp)
 
@@ -114,35 +148,62 @@ def evaluate_config(
     thrust_power = total_drag * mission.velocity
     total_hw_power = sum(hw_powers)
     total_sk_power = sum(sk_powers)
-    total_power = thrust_power + total_hw_power + total_sk_power
+    total_payload_power = config.payload.power_W
+    total_power = thrust_power + total_hw_power + total_sk_power + total_payload_power
 
-    total_wing_area = sum(mission.wing_area(w) for w in weights)
     control_mass_total = sum(hw_masses)
     cost_score = mass_proxy_cost(structural_mass_kg=N * struct_mass_each, control_mass_kg=control_mass_total, N=N)
     b_eff = effective_span(N, span, config.lateral_overlap_ratio, config.geometry)
+
+    # Energy balance — can the fleet sustain 24h flight?
+    energy_result = compute_energy_balance(
+        power_required_W=total_power,
+        wing_area_m2=total_wing_area,
+        coverage_fraction=panel_coverage,
+        panel_efficiency=panel_efficiency,
+        altitude_m=mission.altitude_m,
+        latitude_deg=latitude_deg,
+        day_of_year=day_of_year,
+    )
+    battery_mass = required_battery_mass(
+        power_required_W=total_power,
+        night_hours=energy_result.night_hours,
+    )
 
     return {
         "N": N,
         "span_each_m": span,
         "total_span_m": N * span,
         "effective_span_m": b_eff,
+        "aspect_ratio": ar_each,
         "architecture": config.architecture.value,
         "position_strategy": config.position_strategy.value,
         "geometry": config.geometry.value,
         "lateral_overlap_ratio": config.lateral_overlap_ratio,
+        "altitude_m": mission.altitude_m,
         "wing_mass_each_kg": struct_mass_each,
         "wing_mass_total_kg": N * struct_mass_each,
         "control_mass_total_kg": control_mass_total,
+        "payload_mass_kg": config.payload.mass_kg,
+        "payload_power_W": config.payload.power_W,
+        "battery_mass_kg": battery_mass,
         "total_mass_kg": total_fleet_mass,
+        "total_mass_with_battery_kg": total_fleet_mass + battery_mass,
         "induced_drag_N": total_induced,
         "parasite_drag_N": total_parasite,
         "total_drag_N": total_drag,
         "thrust_power_W": thrust_power,
         "hw_power_W": total_hw_power,
         "sk_power_W": total_sk_power,
+        "payload_power_total_W": total_payload_power,
         "total_power_W": total_power,
         "total_wing_area_m2": total_wing_area,
         "cost_score": cost_score,
+        "energy_available_Wh": energy_result.energy_available_Wh,
+        "energy_required_Wh": energy_result.energy_required_total_Wh,
+        "energy_surplus_Wh": energy_result.surplus_Wh,
+        "energy_closes": energy_result.closes,
+        "day_hours": energy_result.day_hours,
         "mission": mission.name,
     }
 
@@ -154,17 +215,38 @@ def sweep_configs(
     position_strategies: list,
     geometries: list,
     lateral_overlap_ratios: list,
+    aspect_ratios: Optional[list] = None,
+    payloads: Optional[list] = None,
 ) -> list:
+    """Generate all combinations of sweep parameters.
+
+    If aspect_ratios is None, AR is derived from span and wing loading.
+    If payloads is None, no payload is included.
+    """
+    ar_list = aspect_ratios or [None]
+    payload_list = payloads or [no_payload()]
+
     configs = []
-    for span, N, arch, pos, geo, lor in product(
-        spans, Ns, architectures, position_strategies, geometries, lateral_overlap_ratios
+    for span, N, arch, pos, geo, lor, ar, payload in product(
+        spans, Ns, architectures, position_strategies, geometries,
+        lateral_overlap_ratios, ar_list, payload_list,
     ):
         if N == 1:
-            config = AircraftConfig(N=1, span_each_m=span, architecture=arch,
-                position_strategy=PositionStrategy.UNIFORM, geometry=geo, lateral_overlap_ratio=0.0)
-            if not any(c.N == 1 and c.span_each_m == span for c in configs):
+            config = AircraftConfig(
+                N=1, span_each_m=span, architecture=arch,
+                position_strategy=PositionStrategy.UNIFORM, geometry=geo,
+                lateral_overlap_ratio=0.0, aspect_ratio=ar, payload=payload,
+            )
+            if not any(
+                c.N == 1 and c.span_each_m == span
+                and c.aspect_ratio == ar and c.payload.name == payload.name
+                for c in configs
+            ):
                 configs.append(config)
         else:
-            configs.append(AircraftConfig(N=N, span_each_m=span, architecture=arch,
-                position_strategy=pos, geometry=geo, lateral_overlap_ratio=lor))
+            configs.append(AircraftConfig(
+                N=N, span_each_m=span, architecture=arch,
+                position_strategy=pos, geometry=geo,
+                lateral_overlap_ratio=lor, aspect_ratio=ar, payload=payload,
+            ))
     return configs
