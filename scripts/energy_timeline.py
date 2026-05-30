@@ -103,7 +103,9 @@ def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
         )
         total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
 
-        new_batt = total_pwr * night_h / BATT_ENERGY_DENSITY / N
+        # Battery sized for night survival with 30% margin
+        # (extra 30% ensures battery lasts even if it doesn't fully charge)
+        new_batt = total_pwr * night_h * 1.3 / BATT_ENERGY_DENSITY / N
         new_struct = beam.wing_mass(span, AR, ac)
 
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:

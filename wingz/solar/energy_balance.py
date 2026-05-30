@@ -53,7 +53,15 @@ def compute_energy_balance(
 
 
 def required_battery_mass(
-    power_required_W: float, night_hours: float, battery_energy_density_Wh_kg: float = 250.0,
+    power_required_W: float, night_hours: float,
+    battery_energy_density_Wh_kg: float = 250.0,
+    margin: float = 1.3,
 ) -> float:
-    """m_bat = P * t_night / energy_density. Default 250 Wh/kg (Li-ion). Ref: Noth (2008) Ch. 3."""
-    return power_required_W * night_hours / battery_energy_density_Wh_kg
+    """
+    m_bat = P * t_night * margin / energy_density.
+
+    The margin (default 1.3 = 30%) accounts for the battery not reaching
+    100% charge before sunset (weak afternoon solar) and degradation.
+    Ref: Noth (2008) Ch. 3.
+    """
+    return power_required_W * night_hours * margin / battery_energy_density_Wh_kg
