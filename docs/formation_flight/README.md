@@ -8,8 +8,22 @@ equivalent aerodynamic performance.
 
 ## Core Thesis
 
-Structural complexity scales faster than aerodynamic benefit as wingspan increases.
-Formation flight trades structural complexity for control complexity.
+**The fundamental trade: structural complexity → control complexity.**
+
+As wingspan increases, structural mass grows faster than the aerodynamic benefit
+it provides. Wing deflection scales with the cube of span. At extreme wingspans,
+wings become stiffness-limited rather than strength-limited — requiring ever more
+material just to avoid flutter and excessive deflection, not to carry load.
+
+Formation flight sidesteps this entirely. Instead of one very large wing fighting
+nonlinear structural penalties, multiple smaller aircraft fly in coordinated
+formation to achieve comparable induced drag performance. Each individual aircraft
+stays in the structurally efficient regime while the formation collectively acts
+as a larger wing.
+
+The thesis is that autonomous control systems — GPS, IMUs, radios, compute — are
+cheaper, lighter, and more scalable than the aerospace structures required to build
+extreme-span wings. Control complexity replaces structural complexity.
 
 ## Running the Analysis
 
@@ -40,11 +54,26 @@ python scripts/sensitivity_analysis.py --save # save to docs/
 
 ## Key Design Insights
 
-### Position Strategy
+### The Navigator Flies From Behind
 
-The heaviest aircraft (full nav/comms) should sit in the best wake position,
-not the leader slot. The lightest aircraft leads because it flies in clean
-air and has the best power-to-weight ratio to handle full drag.
+This inverts the usual intuition where the "leader" is the most capable aircraft.
+
+In a formation, the front aircraft flies in clean air and pays full induced drag.
+The first follower slot sits in the upwash of the leader's wingtip vortex — the
+aerodynamically best seat in the house.
+
+The key insight: put the **lightest** aircraft up front. It has the best
+power-to-weight ratio and can absorb full drag. Put the **heaviest** aircraft
+(the one carrying the full navigation and communications stack) in the optimal
+wake position where it gets the greatest drag reduction.
+
+This creates a natural synergy that doesn't exist in single-aircraft design:
+- The aircraft that needs the most aerodynamic help (heaviest) gets the most
+- That same aircraft has the best sensors for precise station-keeping
+- And it's in the position where station-keeping precision matters most
+  (tight formation spacing = more drag benefit but tighter tolerance)
+
+The formation navigator directs traffic from behind, not from the front.
 
 ### Formation Architectures
 
