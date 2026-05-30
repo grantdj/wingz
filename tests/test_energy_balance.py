@@ -34,7 +34,17 @@ def test_impossible_conditions_fails():
 
 
 def test_battery_mass_positive():
-    # 200W * 12h * 1.3 margin / 250 Wh/kg = 12.48 kg
+    # 200W * 12h / 250 Wh/kg = 9.6 kg, targeting dawn_soc = 0.
     mass = required_battery_mass(power_required_W=200.0, night_hours=12.0, battery_energy_density_Wh_kg=250.0)
     assert mass > 0
+    assert abs(mass - 9.6) < 0.1
+
+
+def test_battery_mass_capacity_factor():
+    mass = required_battery_mass(
+        power_required_W=200.0,
+        night_hours=12.0,
+        battery_energy_density_Wh_kg=250.0,
+        capacity_factor=1.3,
+    )
     assert abs(mass - 12.48) < 0.1

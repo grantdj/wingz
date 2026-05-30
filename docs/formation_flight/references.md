@@ -198,18 +198,48 @@ For perpetual flight (30+ days), the aircraft must close the energy balance
 every 24-hour cycle. This is the fundamental feasibility constraint for
 solar HALE platforms.
 
+The nominal battery sizing target is `dawn_soc = 0` after a full day/night
+cycle: the aircraft arrives at dawn with no usable battery energy remaining.
+Positive dawn SOC is excess installed capacity; negative dawn SOC is an energy
+shortfall useful for ranking infeasible designs.
+
 - Noth, A., "Design of Solar Powered Airplanes for Continuous Flight," PhD Thesis, ETH Zurich, 2008. (Definitive treatment of solar aircraft energy balance)
 - Leutenegger, S. et al., "Solar Airplane Conceptual Design and Performance Estimation," *Journal of Intelligent & Robotic Systems*, Vol. 61, 2011.
 
 ### Battery Mass
 
-`m_battery = P · t_night / ε`
+`m_battery = P · t_night · f_capacity / ε`
 
 Used in: `wingz/solar/energy_balance.py`
 
-Default ε = 250 Wh/kg (current Li-ion). Near-term Li-S: ~400 Wh/kg.
+Default ε = 250 Wh/kg (current Li-ion). Near-term Li-S: ~400 Wh/kg. The
+nominal `f_capacity = 1.0` target corresponds to `dawn_soc = 0`; values above
+1.0 are installed-capacity derating factors for usable fraction, charge losses,
+or end-of-life degradation. They are not dawn margin.
 
 - Noth (2008), Chapter 3 — battery sizing for solar aircraft
+
+### Altitude Potential Energy
+
+`E_potential = m · g · h`
+
+Specific gravitational potential energy per vertical kilometer:
+
+`E_specific = g · 1000 m = 9810 J/kg = 2.73 Wh/kg`
+
+This is the ideal energy associated with gaining or losing 1 km of altitude per
+kilogram of aircraft mass. For a full aircraft or fleet:
+
+`E_per_vertical_km = 2.73 Wh/kg · m_aircraft_kg`
+
+For glide-distance intuition, divide by glide ratio:
+
+`E_per_horizontal_km = 2.73 Wh/kg / (L/D)`
+
+Example: at `L/D = 20`, altitude is worth about `0.136 Wh/kg` per horizontal
+kilometer. This is not battery energy unless regenerative propulsive recovery is
+modeled; in normal glide it is dissipated primarily through drag while trading
+altitude for range or endurance.
 
 ## Station Keeping
 
