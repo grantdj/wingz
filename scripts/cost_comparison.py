@@ -137,6 +137,7 @@ def _solve_config(N, span, pld_power=0.0):
                 structural_mass_kg=new_struct * N,
                 solar_panel_area_m2=panel_area,
                 battery_capacity_kWh=new_batt * N * BATT_ENERGY_DENSITY / 1000,
+                span_m=span,
                 n_full_nav=1,
                 n_basic_nav=N - 1,
                 production_run=10,
@@ -281,7 +282,7 @@ def main():
     c_batt   = np.array([c.batteries for c in cb_list]) / scale
     c_avio   = np.array([c.avionics for c in cb_list]) / scale
     c_prop   = np.array([c.propulsion for c in cb_list]) / scale
-    c_other  = np.array([c.assembly + c.ground_infra + c.tooling_amortized
+    c_other  = np.array([c.assembly + c.ground_infra + c.capital_amortized
                           for c in cb_list]) / scale
 
     ax.bar(x, c_struct, label="Structure", color="#2196F3")

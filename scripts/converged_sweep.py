@@ -268,7 +268,7 @@ def main():
     c_prop = np.array([c.propulsion for c in cb])
     c_asm = np.array([c.assembly for c in cb])
     c_gnd = np.array([c.ground_infra for c in cb])
-    c_tool = np.array([c.tooling_amortized for c in cb])
+    c_tool = np.array([c.capital_amortized for c in cb])
 
     scale = 1e6
     ax.bar(x, c_struct / scale, label="Structure", color="#2196F3")

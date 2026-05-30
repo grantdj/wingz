@@ -31,7 +31,7 @@ def test_custom_prices():
     default = materials_cost(structural_mass_kg=50, solar_panel_area_m2=40, control_mass_kg=3)
     cheap = materials_cost(
         structural_mass_kg=50, solar_panel_area_m2=40, control_mass_kg=3,
-        prices=MaterialPrices(cfrp_finished_per_kg=50),
+        prices=MaterialPrices(cfrp_base_per_kg=50),
     )
     assert cheap < default
 
@@ -75,9 +75,9 @@ def test_fleet_cost_solar_dominates():
     assert fc.solar_cells > fc.batteries
 
 
-def test_tooling_amortization():
+def test_capital_amortization():
     fc_10 = fleet_cost(N=1, structural_mass_kg=50, solar_panel_area_m2=36,
                        battery_capacity_kWh=10, production_run=10)
     fc_100 = fleet_cost(N=1, structural_mass_kg=50, solar_panel_area_m2=36,
                         battery_capacity_kWh=10, production_run=100)
-    assert fc_100.tooling_amortized < fc_10.tooling_amortized
+    assert fc_100.capital_amortized < fc_10.capital_amortized
