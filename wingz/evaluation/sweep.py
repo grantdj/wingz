@@ -92,6 +92,9 @@ def evaluate_config(
     panel_coverage: float = 0.8,
     panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
     propulsion_efficiency: float = 0.75,  # combined prop × motor × ESC
+    stall_margin_day: float = 1.15,   # V_cruise / V_stall during day
+    stall_margin_night: float = 1.03,  # V_cruise / V_stall at night (calm stratosphere)
+    night_descent_m: float = 0.0,     # altitude descent during night (gravity assist)
     max_iterations: int = 80,
 ) -> dict:
     """
@@ -161,12 +164,14 @@ def evaluate_config(
         total_weight = total_fleet_mass * 9.81
         weights = [m / total_fleet_mass * total_weight for m in total_mass_per]
 
-        # Cruise speed
+        # Cruise speed (day margin for drag/power calculations)
         max_weight = max(weights)
         if use_beam:
-            velocity = _cruise_speed(max_weight, wing_area_each, rho)
+            v_stall = np.sqrt(2 * max_weight / (rho * wing_area_each * CL_MAX))
+            velocity = stall_margin_day * v_stall
         else:
             velocity = mission.velocity
+            v_stall = velocity / stall_margin_day
         q = _dynamic_pressure(rho, velocity)
 
         # Position strategy reordering
@@ -216,16 +221,45 @@ def evaluate_config(
                 position_tolerance_m=2.0, is_leader=is_leader)
             sk_total += sk
 
-        # Power
+        # Day power (at day stall margin)
         thrust_power = total_drag * velocity
         propulsion_power = thrust_power / propulsion_efficiency
         total_hw_power = sum(hp_ordered)
         total_payload_power = config.payload.power_W
-        total_power = propulsion_power + total_hw_power + sk_total + total_payload_power
+        total_power_day = propulsion_power + total_hw_power + sk_total + total_payload_power
+
+        # Night power (at night stall margin, lower speed)
+        v_night = stall_margin_night * v_stall
+        q_night = _dynamic_pressure(rho, v_night)
+        night_induced = 0.0
+        night_parasite = 0.0
+        for i in range(N):
+            di = drag_factors[i] * w_ordered[i]**2 / (
+                q_night * np.pi * mission.oswald_e * span**2)
+            dp = q_night * wing_area_each * mission.cd0
+            night_induced += di
+            night_parasite += dp
+        night_drag = night_induced + night_parasite
+        night_thrust = night_drag * v_night
+        night_propulsion = night_thrust / propulsion_efficiency
+
+        # Night descent gravity assist
+        night_hours = energy_result.night_hours if iteration > 0 else 10.1
+        if night_descent_m > 0 and night_hours > 0:
+            descent_rate = night_descent_m / (night_hours * 3600)
+            gravity_power = total_fleet_mass * 9.81 * descent_rate / propulsion_efficiency
+        else:
+            gravity_power = 0.0
+
+        total_power_night = max(0, night_propulsion - gravity_power) + total_hw_power + sk_total + total_payload_power
+
+        # Use day power for energy balance (solar collection vs day consumption)
+        # Use night power for battery sizing
+        total_power = total_power_day  # for backwards compat in results
 
         # Energy balance
         energy_result = compute_energy_balance(
-            power_required_W=total_power,
+            power_required_W=total_power_day,
             wing_area_m2=total_wing_area,
             coverage_fraction=panel_coverage,
             panel_efficiency=panel_efficiency,
@@ -235,7 +269,7 @@ def evaluate_config(
         )
 
         new_battery_mass = required_battery_mass(
-            power_required_W=total_power,
+            power_required_W=total_power_night,
             night_hours=energy_result.night_hours,
         )
 
@@ -290,8 +324,12 @@ def evaluate_config(
         "geometry": config.geometry.value,
         "lateral_overlap_ratio": config.lateral_overlap_ratio,
         "altitude_m": mission.altitude_m,
-        "velocity_m_s": velocity,
+        "velocity_day_m_s": velocity,
+        "velocity_night_m_s": v_night if use_beam else velocity,
         "v_stall_m_s": v_stall,
+        "stall_margin_day": stall_margin_day,
+        "stall_margin_night": stall_margin_night,
+        "night_descent_m": night_descent_m,
         "wing_loading_N_m2": wing_loading,
         "wing_mass_each_kg": struct_mass_each,
         "wing_mass_total_kg": N * struct_mass_each,
@@ -310,7 +348,9 @@ def evaluate_config(
         "hw_power_W": total_hw_power,
         "sk_power_W": sk_total,
         "payload_power_total_W": total_payload_power,
-        "total_power_W": total_power,
+        "total_power_day_W": total_power_day,
+        "total_power_night_W": total_power_night,
+        "total_power_W": total_power_day,  # backwards compat
         "total_wing_area_m2": total_wing_area,
         "cost_score": cost_score,
         "energy_available_Wh": energy_result.energy_available_Wh,
