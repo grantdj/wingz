@@ -41,12 +41,12 @@ LAT_DEG = 30.0
 DOY = 172
 V_CRUISE = 25.0  # m/s, fixed for these configs
 
-# Configs: (label, N, span, AR_approx)
+# Configs: (N, span) — AR is computed by the solver, not hardcoded
 CONFIGS = [
-    ("1x60m AR≈12.7", 1, 60, 12.7),
-    ("2x40m AR≈11.2", 2, 40, 11.2),
-    ("4x20m AR≈8.3",  4, 20,  8.3),
-    ("6x10m AR≈6.4",  6, 10,  6.4),
+    (1, 60),
+    (2, 40),
+    (4, 20),
+    (6, 10),
 ]
 
 COLORS = ["#2196F3", "#4CAF50", "#FF9800", "#E91E63"]
@@ -226,20 +226,20 @@ def main():
     print("Finding payload for 30% energy margin, then simulating 24h cycle.\n")
 
     datasets = []
-    for label, N, span, ar_approx in CONFIGS:
-        # Find payload at 30% margin
+    for N, span in CONFIGS:
         pld_pwr = _find_payload_for_margin(N, span, target_margin=0.30)
         r = solve(N, span, pld_power=pld_pwr)
         if r is None:
-            print(f"  {label}: FAILED TO CONVERGE")
+            print(f"  {N}x{span}m: FAILED TO CONVERGE")
             continue
+        label = f"{N}x{span}m AR={r['AR']:.1f}"
         sim = simulate_24h(r)
         sim["label"] = label
         sim["N"] = N
         sim["span"] = span
         datasets.append(sim)
         print(f"  {label}: pld={pld_pwr:.0f}W, req={r['total_power']:.0f}W, "
-              f"batt_cap={r['batt_capacity_Wh']:.0f}Wh/ac, ac={r['ac_mass']:.0f}kg, AR={r['AR']:.1f}")
+              f"batt_cap={r['batt_capacity_Wh']:.0f}Wh/ac, ac={r['ac_mass']:.0f}kg")
 
     if not datasets:
         print("No configs converged!")
