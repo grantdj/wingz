@@ -324,3 +324,70 @@ For 30°N year-round operations:
 | AR | 16 | 20 |
 | Reynolds number | 208k | 250k |
 | $/kg payload (OOA) | - | $118k |
+
+## Iteration 4: TCO, DOD Optimization, Competitive Landscape
+
+### Depth of Discharge Optimization
+
+80% DOD is the sweet spot for multi-year operations:
+
+| DOD | Battery/ac | Replace interval | Annual batt cost |
+|---|---|---|---|
+| 100% | 43 kg | 1.4 years | $143k/year |
+| **80%** | **54 kg** | **2.7 years** | **$89k/year** |
+| 60% | 72 kg | 5.5 years | $59k/year |
+
+80% DOD doubles battery life (1.4 → 2.7 years) at only 25% more mass.
+The annual cost drops 38%. At 60% DOD the mass penalty (67% more)
+starts eating into payload capacity.
+
+### 5-Year Total Cost of Ownership (6x20m AR=16, OOA)
+
+| Item | Cost |
+|---|---|
+| Fleet acquisition (OOA) | $4,500,000 |
+| Operations (5yr) | $1,000,000 |
+| Maintenance (5yr) | $500,000 |
+| Insurance (5yr) | $250,000 |
+| Battery replacements | $698,000 |
+| **5-year TCO** | **$6,948,000** |
+| **Daily cost** | **$3,807/day** |
+
+### Competitive Landscape
+
+| System | Daily cost | Capability |
+|---|---|---|
+| **Our formation (6x20m)** | **$3,807** | 500W year-round, 20km, relocatable |
+| Tethered aerostat | $3,000 | Fixed location, weather-limited |
+| LEO satellite (amortized) | $5,000 | Intermittent, constellation needed |
+| Zephyr S (single) | $15,000 | 50W payload, seasonal limits |
+| MQ-9 Reaper | $30,000 | Not persistent, fuel-based |
+| GEO satellite | $50,000 | Global, 15yr life, $300M+ launch |
+
+The formation is cost-competitive with LEO satellites and 4× cheaper
+than Zephyr per unit of payload delivered. Key advantages over all
+alternatives: no launch costs, relocatable, payload-swappable,
+graceful degradation.
+
+### Investigation Summary
+
+After 4 iterations of research and modeling:
+
+**The formation flight thesis is validated.** Six small aircraft (20-30m span)
+in V formation deliver persistent stratospheric coverage at $3,800/day —
+competitive with satellites and dramatically cheaper than single HALE platforms.
+
+**Key design parameters (converged):**
+- Fleet size: N=6 (optimal for cost and resilience)
+- Span: 20-30m per aircraft (20m budget, 30m capability)
+- Aspect ratio: 16-20 (Re-limited at small spans)
+- Configuration: boom-tail (yaw authority for formation)
+- Manufacturing: OOA composites (saves $2-6M vs autoclave)
+- Battery: 80% DOD for 2.7-year replacement interval
+- Panel sizing: 3× power margin (dynamic coverage, not fixed 80%)
+- Stall margins: 1.15× day, 1.03× night
+- Leader rotation: every 30-60 minutes (already modeled)
+- Design point: winter solstice at operating latitude
+
+**Biggest future lever:** Solid-state batteries (2028, 400 Wh/kg) would
+increase winter payload by ~50% and eliminate cold-weather concerns.
