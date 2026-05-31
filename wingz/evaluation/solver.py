@@ -19,7 +19,8 @@ from typing import Optional
 from wingz.constants import (
     GRAVITY, CL_MAX, OSWALD_E, CD0,
     STALL_MARGIN_DAY, STALL_MARGIN_NIGHT,
-    PANEL_EFFICIENCY, PANEL_COVERAGE, SOLAR_CONSTANT,
+    PANEL_EFFICIENCY, SOLAR_CONSTANT,
+    SOLAR_POWER_MARGIN, MAX_PANEL_COVERAGE,
     BATTERY_ENERGY_DENSITY, PROPULSION_EFFICIENCY,
     PAYLOAD_SPECIFIC_MASS, CLIMB_POWER_FRACTION,
     DEFAULT_LATITUDE, DEFAULT_DAY_OF_YEAR,
@@ -53,6 +54,7 @@ def _sk_power(N: int) -> float:
 
 
 def solar_power_instant(total_area_m2: float, alt_m: float, hour_of_day: float,
+                        panel_coverage: float = MAX_PANEL_COVERAGE,
                         lat_deg: float = DEFAULT_LATITUDE,
                         doy: int = DEFAULT_DAY_OF_YEAR) -> float:
     """Instantaneous solar power (W) at a given hour of day and altitude."""
@@ -65,7 +67,36 @@ def solar_power_instant(total_area_m2: float, alt_m: float, hour_of_day: float,
         return 0.0
     tau = 0.3 * np.exp(-alt_m / 8500)
     irr = SOLAR_CONSTANT * np.exp(-tau / max(sin_el, 0.01))
-    return total_area_m2 * PANEL_COVERAGE * PANEL_EFFICIENCY * irr
+    return total_area_m2 * panel_coverage * PANEL_EFFICIENCY * irr
+
+
+def compute_panel_coverage(
+    power_required_24h_Wh: float,
+    wing_area_m2: float,
+    alt_m: float = CRUISE_ALTITUDE_M,
+    lat_deg: float = DEFAULT_LATITUDE,
+    doy: int = DEFAULT_DAY_OF_YEAR,
+    solar_margin: float = SOLAR_POWER_MARGIN,
+) -> float:
+    """
+    Compute panel coverage fraction so solar produces margin × power over 24h.
+
+    Instead of fixed 80% coverage, size panels to collect solar_margin × daily
+    energy requirement. Returns coverage fraction clamped to MAX_PANEL_COVERAGE.
+    """
+    avg_irr = (2 / np.pi) * solar_irradiance(alt_m, lat_deg, doy)
+    day_h = day_length_hours(lat_deg, doy)
+    # Energy available per m² of panel per day
+    energy_per_m2 = PANEL_EFFICIENCY * avg_irr * day_h  # Wh/m²
+
+    if energy_per_m2 <= 0 or wing_area_m2 <= 0:
+        return MAX_PANEL_COVERAGE
+
+    # Required panel area = margin × daily energy / energy_per_m²
+    required_panel_area = power_required_24h_Wh * solar_margin / energy_per_m2
+    coverage = required_panel_area / wing_area_m2
+
+    return min(coverage, MAX_PANEL_COVERAGE)
 
 
 def _level_power(W_per_ac: float, span: float, area_each: float,
@@ -139,14 +170,22 @@ def solve_converged(
             return None
 
         if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05 and i > 0:
-            avail = total_area * PANEL_COVERAGE * PANEL_EFFICIENCY * avg_irr * day_h
-            solar_surplus_ratio = (avail - P_day * 24) / (P_day * 24)
+            # Panel coverage sized to 3× power requirement (not fixed 80%)
+            daily_energy_Wh = P_day * 24
+            panel_cov = compute_panel_coverage(
+                daily_energy_Wh, total_area,
+                alt_m=CRUISE_ALTITUDE_M, lat_deg=lat_deg, doy=doy,
+            )
+            panel_area = total_area * panel_cov
+
+            avail = panel_area * PANEL_EFFICIENCY * avg_irr * day_h
+            solar_surplus_ratio = (avail - daily_energy_Wh) / daily_energy_Wh
             b_eff = effective_span(N, span, 0.1, FormationGeometry.V)
             defl = beam.deflection_percent(span, AR, ac)
 
             fc = fleet_cost(
                 N=N, structural_mass_kg=new_struct * N,
-                solar_panel_area_m2=total_area,
+                solar_panel_area_m2=panel_area,
                 battery_capacity_kWh=new_batt * N * BATTERY_ENERGY_DENSITY / 1000,
                 span_m=span, n_full_nav=1, n_basic_nav=N - 1,
                 production_run=10,
@@ -155,6 +194,7 @@ def solve_converged(
             return {
                 "N": N, "span": span, "AR": AR,
                 "chord": span / AR, "area_each": area_each,
+                "panel_coverage": panel_cov, "panel_area_m2": panel_area,
                 "struct_each": new_struct, "batt_each": new_batt,
                 "ac_mass": ac, "fleet_mass": N * ac,
                 "V_stall": V_stall, "V_day": V_day, "V_night": V_night,
@@ -212,6 +252,7 @@ def simulate_24h(
     total_area: float,
     batt_cap_Wh: float,
     power_required: float,
+    panel_coverage: float = MAX_PANEL_COVERAGE,
     alt_m: float = CRUISE_ALTITUDE_M,
     lat_deg: float = DEFAULT_LATITUDE,
     doy: int = DEFAULT_DAY_OF_YEAR,
@@ -240,7 +281,7 @@ def simulate_24h(
         t_local = t % 24.0
         time_h[i] = t - sunrise_h
 
-        sol = solar_power_instant(total_area, alt_m, t_local, lat_deg, doy)
+        sol = solar_power_instant(total_area, alt_m, t_local, panel_coverage, lat_deg, doy)
         solar_W[i] = sol
         req_W[i] = power_required
 
