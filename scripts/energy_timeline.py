@@ -22,25 +22,8 @@ if SAVE:
 
 import matplotlib.pyplot as plt
 
-from wingz.structures.beam import BeamStructure
-from wingz.solar.power import solar_irradiance, day_length_hours, _solar_declination
-from wingz.aerodynamics.formation_aero import per_slot_drag_factor, FormationGeometry
-
-# ── constants ──────────────────────────────────────────────────────────────
-
-G = 9.81
-CL_MAX = 1.2
-BATT_ENERGY_DENSITY = 250.0   # Wh/kg
-PANEL_EFF = 0.38
-PANEL_COVERAGE = 0.80
-CD0 = 0.025
-OSWALD_E = 0.85
-CRUISE_ALT_M = 20000.0
-RHO_CRUISE = 0.0889
-LAT_DEG = 30.0
-DOY = 172
-STALL_MARGIN_DAY = 1.15
-STALL_MARGIN_NIGHT = 1.03
+from wingz.evaluation.solver import find_max_payload, simulate_24h
+from wingz.constants import BATTERY_ENERGY_DENSITY
 
 # Configs: (N, span) — AR is computed by the solver, not hardcoded
 CONFIGS = [
@@ -53,206 +36,29 @@ CONFIGS = [
 COLORS = ["#2196F3", "#4CAF50", "#FF9800", "#E91E63"]
 
 
-# ── solver (fixed-AR geometry, same approach as converged_sweep.py) ────────
-
-def _choose_ar(span):
-    """Pick a realistic design AR for a given span (6-14 range per spec)."""
-    ar = 5.0 + span / 6.0
-    return float(np.clip(ar, 6.0, 14.0))
-
-
-def solve(N, span, AR=None, pld_power=0, pld_g_per_W=50):
-    """Fixed-AR self-consistent solver.
-
-    Wing area = span² / AR (fixed geometry).
-    Cruise speed from wing loading.
-    Includes payload mass in convergence loop.
-    """
-    rho = RHO_CRUISE
-    g = G
-    hw = 2.5
-    pld_mass_each = pld_power * pld_g_per_W / 1000 / N
-
-    if AR is None:
-        AR = _choose_ar(span)
-
-    # Fixed wing geometry
-    area_each = span ** 2 / AR
-    factors = per_slot_drag_factor(N, span, 0.1, FormationGeometry.V)
-
-    day_h = day_length_hours(LAT_DEG, DOY)
-    night_h = 24 - day_h
-    hw_pwr = 15 + 3 * (N - 1)
-    sk_total = 5.0 * max(0, N - 1)
-
-    struct_each = 5.0
-    batt_each = 5.0
-    beam = BeamStructure()
-
-    for _ in range(300):
-        ac = struct_each + hw + pld_mass_each + batt_each
-        W = ac * g
-
-        # Cruise speed from wing loading (self-consistent)
-        V_stall = np.sqrt(2 * W / (rho * area_each * CL_MAX))
-        V_cruise = STALL_MARGIN_DAY * V_stall
-        q = 0.5 * rho * V_cruise ** 2
-
-        drag = sum(
-            factors[j] * W ** 2 / (q * np.pi * OSWALD_E * span ** 2)
-            + q * area_each * CD0
-            for j in range(N)
-        )
-        total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
-
-        # Night power at lower stall margin
-        V_night = STALL_MARGIN_NIGHT * V_stall
-        q_night = 0.5 * rho * V_night ** 2
-        drag_night = sum(
-            factors[j] * W ** 2 / (q_night * np.pi * OSWALD_E * span ** 2)
-            + q_night * area_each * CD0
-            for j in range(N)
-        )
-        total_pwr_night = drag_night * V_night + hw_pwr + sk_total + pld_power
-
-        # Battery sized to night power — reaches zero at dawn
-        new_batt = total_pwr_night * night_h / BATT_ENERGY_DENSITY / N
-        new_struct = beam.wing_mass(span, AR, ac)
-
-        if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
-            return None
-
-        if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05:
-            return {
-                "N": N, "span": span, "V_cruise": V_cruise,
-                "area_each": area_each, "AR": AR,
-                "struct_each": new_struct, "batt_each": new_batt,
-                "ac_mass": ac,
-                "total_power": total_pwr,
-                "batt_capacity_Wh": new_batt * BATT_ENERGY_DENSITY,
-                "day_h": day_h, "night_h": night_h,
-            }
-
-        batt_each = 0.7 * batt_each + 0.3 * new_batt
-        struct_each = 0.7 * struct_each + 0.3 * new_struct
-
-    return None
-
-
-def _solar_power_instant(total_area_m2, alt_m, t_h):
-    """Instantaneous solar power for formation (W) at time-of-day t_h."""
-    solar_noon_h = 12.0
-    hour_angle = np.radians((t_h - solar_noon_h) * 15.0)
-    declination = _solar_declination(DOY)
-    lat_rad = np.radians(LAT_DEG)
-    sin_el = (np.sin(lat_rad) * np.sin(declination)
-              + np.cos(lat_rad) * np.cos(declination) * np.cos(hour_angle))
-    if sin_el <= 0.0:
-        return 0.0
-    tau = 0.3 * np.exp(-alt_m / 8500)
-    irr = 1361.0 * np.exp(-tau / max(sin_el, 0.01))
-    return total_area_m2 * PANEL_COVERAGE * PANEL_EFF * irr
-
-
-def simulate_24h(cfg_dict):
-    """
-    Simulate one 24h cycle at cruise altitude starting at dawn with empty battery.
-
-    Returns time arrays and power/energy arrays.
-    """
-    c = cfg_dict
-    N = c["N"]
-    total_area = N * c["area_each"]
-    batt_cap_Wh = c["batt_capacity_Wh"]
-    req_pwr = c["total_power"]   # required power (W), total formation
-
-    day_h = c["day_h"]
-    sunrise_h = 12.0 - day_h / 2.0
-
-    dt_min = 10
-    dt_h = dt_min / 60.0
-    n_steps = int(24.0 / dt_h)
-
-    time_h = np.zeros(n_steps)
-    solar_W = np.zeros(n_steps)
-    req_W = np.zeros(n_steps)
-    batt_Wh = np.zeros(n_steps)
-    waste_W = np.zeros(n_steps)
-
-    batt = 0.0  # start empty (worst case)
-
-    for i in range(n_steps):
-        t = sunrise_h + i * dt_h   # 0 = dawn
-        t_local = t % 24.0
-        time_h[i] = t - sunrise_h  # hours from dawn
-
-        sol = _solar_power_instant(total_area, CRUISE_ALT_M, t_local)
-        solar_W[i] = sol
-        req_W[i] = req_pwr
-
-        net = sol - req_pwr
-        if net > 0:
-            headroom = batt_cap_Wh - batt
-            to_batt = min(net * dt_h, headroom)
-            waste_W[i] = max(0, net - headroom / dt_h) if headroom / dt_h < net else 0.0
-            batt += to_batt
-        else:
-            batt = max(0.0, batt + net * dt_h)
-
-        batt_Wh[i] = batt
-
-    return {
-        "time_h": time_h,
-        "solar_W": solar_W,
-        "req_W": req_W,
-        "batt_Wh": batt_Wh,
-        "batt_pct": batt_Wh / batt_cap_Wh * 100,
-        "waste_W": waste_W,
-        "day_h": day_h,
-    }
-
-
-def _find_payload_for_energy_feasibility(N, span):
-    """Binary search for max 24h-feasible continuous payload power."""
-    peak_irr = solar_irradiance(CRUISE_ALT_M, LAT_DEG, DOY)
-    day_h = day_length_hours(LAT_DEG, DOY)
-    avg_irr = (2 / np.pi) * peak_irr
-
-    lo, hi = 0, 20000
-    for _ in range(45):
-        mid = (lo + hi) / 2
-        r = solve(N, span, pld_power=mid)
-        if r is None:
-            hi = mid
-            continue
-        avail = N * r["area_each"] * PANEL_COVERAGE * PANEL_EFF * avg_irr * day_h
-        surplus_ratio = (avail - r["total_power"] * 24) / (r["total_power"] * 24)
-        if surplus_ratio >= 0:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2
-
-
 def main():
     print("Simulating 24h energy profiles at cruise altitude...")
     print("Finding max 24h-feasible continuous payload, then simulating 24h cycle.\n")
 
     datasets = []
     for N, span in CONFIGS:
-        pld_pwr = _find_payload_for_energy_feasibility(N, span)
-        r = solve(N, span, pld_power=pld_pwr)
+        r = find_max_payload(N, span)
         if r is None:
             print(f"  {N}x{span}m: FAILED TO CONVERGE")
             continue
         label = f"{N}x{span}m AR={r['AR']:.1f}"
-        sim = simulate_24h(r)
+        batt_cap_Wh = r["batt_each"] * BATTERY_ENERGY_DENSITY
+        sim = simulate_24h(
+            total_area=N * r["area_each"],
+            batt_cap_Wh=batt_cap_Wh,
+            power_required=r["P_night"],
+        )
         sim["label"] = label
         sim["N"] = N
         sim["span"] = span
         datasets.append(sim)
-        print(f"  {label}: pld={pld_pwr:.0f}W, req={r['total_power']:.0f}W, "
-              f"batt_cap={r['batt_capacity_Wh']:.0f}Wh/ac, ac={r['ac_mass']:.0f}kg")
+        print(f"  {label}: pld={r['payload_power']:.0f}W, req={r['P_night']:.0f}W, "
+              f"batt_cap={batt_cap_Wh:.0f}Wh/ac, ac={r['ac_mass']:.0f}kg")
 
     if not datasets:
         print("No configs converged!")
