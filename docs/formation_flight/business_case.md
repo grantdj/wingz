@@ -258,3 +258,80 @@ favors smaller aircraft — a 60m autoclave costs $176M vs $5.5M for 15m.
 Formation HALE is 5–100× cheaper than existing HALE platforms with
 comparable or better endurance, and adds distributed resilience that
 single-aircraft platforms fundamentally cannot provide.
+
+## Growth Path: Low Observable Variant
+
+The baseline aircraft is **not stealthy**. Carbon fiber composite is
+electrically conductive and reflects radar similar to aluminum. An open
+propeller creates blade flash modulation — a distinctive, easily
+classified radar signature. These aircraft are hard to detect because
+they're small, high, cold, and slow — not because they're designed for
+low observability.
+
+A future LO variant would address this in three tiers:
+
+### Tier 1: Propulsion Shielding (Low cost, high impact)
+
+Replace the open propeller with a **ducted fan**. The duct shields the
+fan blades from radar illumination at most aspect angles, eliminating
+blade flash modulation — the single largest RCS contributor.
+
+**Propulsive efficiency tradeoff:** At 20km altitude and 13–30 m/s
+cruise speeds, a ducted fan is roughly a wash with an open prop:
+- The duct reduces tip losses and increases mass flow (efficiency gain)
+- But adds drag from the duct wetted area and interference (efficiency loss)
+- Net: ~0–5% efficiency penalty, acceptable for the observability gain
+- At sprint speeds (30 m/s), the duct drag penalty is more noticeable
+
+RAM (radar-absorbing material) treatment on the duct lip and interior
+further reduces the return from the propulsion system.
+
+### Tier 2: Airframe Shaping (Moderate cost, moderate impact)
+
+- **Edge alignment:** Align all leading/trailing edges to a small number
+  of angles to concentrate radar returns into narrow sectors rather
+  than scattering omnidirectionally
+- **Surface treatment:** RAM coatings or frequency-selective surfaces on
+  high-return areas (wing leading edge, control surface gaps)
+- **Minimize discontinuities:** Flush antennas, covered sensor apertures
+  when not in use, sealed control surface hinge lines
+
+The small size of these aircraft (15–20m span) makes shaping practical.
+There's less surface area to treat and fewer features to manage compared
+to a 72m Skydweller or 40m Global Hawk.
+
+### Tier 3: Full LO Design (High cost, purpose-built)
+
+- Purpose-designed airframe with LO as a primary requirement
+- Integrated sensor apertures (conformal antennas)
+- Fully enclosed propulsion (buried ducted fan with serpentine inlet)
+- All-aspect RCS reduction
+- Likely a different airframe optimized for LO constraints
+
+This tier is a new aircraft, not a modification of the baseline.
+
+### Why Formation Helps LO
+
+Distribution is itself a form of survivability that complements LO:
+- 4–6 small LO targets are harder to find and track than 1 large one
+- Each aircraft presents a smaller RCS than a single large HALE
+- Shooting down one doesn't compromise the formation's mission
+- The adversary must expend multiple interceptors, each requiring its
+  own acquisition, track, and engagement cycle
+- At $200K–$1M per aircraft, the cost exchange ratio strongly favors
+  the formation
+
+### Baseline vs LO Cost Estimate
+
+| Variant | Per-aircraft delta | Fleet delta | Notes |
+|---|---|---|---|
+| Baseline (open prop) | — | — | No LO features |
+| Tier 1 (ducted fan + RAM) | +$5–15K | +$20–60K | Duct, RAM treatment, ~5% efficiency loss |
+| Tier 2 (shaping + coatings) | +$20–50K | +$80–200K | Edge alignment, surface treatment |
+| Tier 3 (full LO) | +$100K+ | +$400K+ | New airframe, significant NRE |
+
+Tier 1 is the obvious first step — high impact on the dominant RCS
+contributor (blade flash) at low cost and minimal efficiency penalty.
+Tier 2 adds meaningful all-aspect reduction. Tier 3 is for contested
+A2/AD environments where survival depends on avoiding detection
+entirely.
