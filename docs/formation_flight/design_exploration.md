@@ -160,3 +160,57 @@ Station two formations at different latitudes:
 Use formations for good-weather months (March-September at 30°N),
 supplement with ground-based assets or LEO satellites in winter.
 Reduces the year-round endurance requirement.
+
+## Reynolds Number Effect on Optimal AR
+
+**Critical finding:** At 20 km altitude, kinematic viscosity is 17× higher
+than sea level. Reynolds number (Re = V × chord / ν) drops fast at high AR.
+
+| Span | AR | Chord | Re at 25 m/s | CL_max impact |
+|---|---|---|---|---|
+| 25m | 20 | 1.25m | 208,000 | Marginal — at boundary |
+| 25m | 14 | 1.79m | 298,000 | OK — standard airfoil data |
+| 20m | 20 | 1.00m | 167,000 | LOW — CL_max drops to ~0.85 |
+| 15m | 20 | 0.75m | 125,000 | LOW — laminar separation issues |
+| 10m | 20 | 0.50m | 83,000 | VERY LOW — model is invalid |
+
+**The model uses CL_max = 1.2 everywhere.** This is optimistic for Re < 200k.
+With Re-dependent CL_max, high AR would be penalized on small spans:
+- 6x10m AR=20 (Re=83k): CL_max ~0.7, stall speed +31%, power +125%
+- 6x25m AR=20 (Re=208k): CL_max ~1.0, marginally viable
+
+**Implication:** The optimal AR for small spans (≤20m) is probably 12-16,
+not 20. For 25m+ spans, AR=20 remains viable. Adding Re-dependent CL_max
+to the solver would shift the Pareto frontier toward larger aircraft.
+
+## Active Flutter Suppression — Not Worth It
+
+At the scales we're looking at (10-25m span, <200 kg), structural mass is
+only 5-11 kg per aircraft. A 15% AFS mass savings is 1.6 kg — but the AFS
+hardware (IMUs, actuators) weighs 2 kg. **Net mass is negative** (-0.4 kg).
+
+AFS is valuable for very large flexible wings (60m+) where structure is
+100+ kg. For our formation aircraft, the wings are stiff enough that
+flutter is not the sizing constraint — beam bending is.
+
+## OOA Manufacturing — $2M/fleet Savings
+
+Switching from autoclave to OOA eliminates the largest capital cost.
+At 25m span, the autoclave alone costs $20M in our model. An OOA oven
+is $200k. Amortized over 10 fleets: **$2M savings per fleet**.
+
+This is larger than the entire avionics + propulsion budget. The cost model
+should be updated to support OOA as the default manufacturing approach
+for these small unmanned aircraft.
+
+## Summary of Recommended Design Changes
+
+1. **Add Re-dependent CL_max** to the solver — this will correctly penalize
+   high AR at small spans and shift the optimum to AR=14-16 for 10-20m spans
+2. **Use OOA manufacturing** as default — eliminate autoclave capital
+3. **Size for winter solstice** at operating latitude for year-long missions
+4. **Target solid-state batteries (2028)** at 400 Wh/kg for production
+5. **Use boom-tail** for formation (yaw authority), flying wing only for single
+6. **Leader rotation** is already modeled correctly (average power sizing)
+7. **AFS not worth it** at these scales — structural mass too small
+8. **Battery heating** is <2% overhead with good insulation — manageable
