@@ -45,6 +45,9 @@ If it goes down, the mission is over. A formation of 4–6 small aircraft:
 - **Distributes signatures** — 4 small aircraft are harder to target than 1 large one
 - **Scales payload** — different aircraft carry different sensors/effectors
 - **Self-deploys** — no C-5 required, no forward base, no runway
+- **Payload rotation** — swap sensors/payloads on individual aircraft without
+  breaking station. 4 mission types per day from identical airframes.
+  See [payload_swap.md](payload_swap.md).
 
 ## Transit Analysis
 
