@@ -34,12 +34,10 @@ See docs/formation_flight/references.md for full citations.
 from dataclasses import dataclass
 import numpy as np
 
-
-# T700-class CFRP properties (typical aerospace layup)
-SIGMA_TENSION = 2400e6      # Pa
-SIGMA_COMPRESSION = 1200e6  # Pa
-E_MODULUS = 135e9           # Pa
-RHO_CFRP = 1550             # kg/m³
+from wingz.constants import (
+    CFRP_DENSITY, AIRFOIL_THICKNESS_RATIO, STRUCTURAL_LOAD_FACTOR,
+    SKIN_AREAL_DENSITY,
+)
 
 
 @dataclass
@@ -49,17 +47,17 @@ class BeamStructure:
     # Material properties
     sigma_allowable: float = 800e6  # Pa (compression with 1.5 SF)
     E: float = 135e9                # Pa, Young's modulus
-    rho_material: float = 1550      # kg/m³, CFRP density
+    rho_material: float = CFRP_DENSITY
 
     # Airfoil geometry
-    thickness_ratio: float = 0.14   # t/c (14% typical for HALE)
+    thickness_ratio: float = AIRFOIL_THICKNESS_RATIO
 
     # Design loads
-    load_factor: float = 1.2        # gust load factor (low for stratospheric HALE)
+    load_factor: float = STRUCTURAL_LOAD_FACTOR
 
     # Mass estimation factors
     web_fraction: float = 0.30      # web mass as fraction of cap mass
-    skin_areal_density: float = 0.3 # kg/m², wing covering (film + ribs, not solid CFRP)
+    skin_areal_density: float = SKIN_AREAL_DENSITY
 
     def wing_mass(
         self,

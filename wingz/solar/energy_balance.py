@@ -89,7 +89,7 @@ def required_coverage_fraction(
 
 def required_battery_mass(
     power_required_W: float, night_hours: float,
-    battery_energy_density_Wh_kg: float = 250.0,
+    battery_energy_density_Wh_kg: float = 250.0,  # from constants.BATTERY_ENERGY_DENSITY
     capacity_factor: float = 1.0,
 ) -> float:
     """

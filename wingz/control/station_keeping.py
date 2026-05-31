@@ -33,11 +33,7 @@ See docs/formation_flight/references.md for full citations.
 """
 
 from wingz.mission.profiles import MissionProfile
-
-# Servo parameters for typical solar UAV control surfaces
-N_SERVOS = 4            # aileron x2, elevator, rudder
-P_SERVO_ACTIVE_W = 2.5  # average power per servo when correcting (W)
-BASE_DUTY = 0.25        # baseline duty cycle at light turbulence, 2m tolerance
+from wingz.constants import N_SERVOS, SERVO_POWER_ACTIVE, SERVO_BASE_DUTY
 
 
 def station_keeping_power(
@@ -63,6 +59,6 @@ def station_keeping_power(
     tol_scale = 2.0 / position_tolerance_m            # normalized to 2m
     wake_factor = 1.5 if in_wake else 1.0
 
-    duty_cycle = min(BASE_DUTY * turb_scale * tol_scale * wake_factor, 0.9)
+    duty_cycle = min(SERVO_BASE_DUTY * turb_scale * tol_scale * wake_factor, 0.9)
 
-    return N_SERVOS * P_SERVO_ACTIVE_W * duty_cycle
+    return N_SERVOS * SERVO_POWER_ACTIVE * duty_cycle

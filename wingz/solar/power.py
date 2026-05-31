@@ -20,8 +20,7 @@ See docs/formation_flight/references.md for full citations.
 
 import numpy as np
 
-# ASTM E490: total solar irradiance at 1 AU
-SOLAR_CONSTANT = 1361.0  # W/m^2
+from wingz.constants import SOLAR_CONSTANT
 
 
 def solar_irradiance(altitude_m: float, latitude_deg: float, day_of_year: int) -> float:

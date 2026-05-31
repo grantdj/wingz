@@ -42,9 +42,7 @@ from wingz.solar.energy_balance import (
 from wingz.structures.empirical import EmpiricalStructure, SOLAR_HALE_DATA
 
 
-# Aerodynamic constants
-CL_MAX = 1.2           # max lift coefficient for thin high-altitude airfoil
-CL_CRUISE = 0.7        # cruise CL (corresponds to ~1.3x stall speed)
+from wingz.constants import CL_MAX
 
 
 class PositionStrategy(enum.Enum):
