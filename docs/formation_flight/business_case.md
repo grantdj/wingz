@@ -90,7 +90,8 @@ sprint transit analysis.
 | Comms relay (SATCOM alternative) | $2–4B/yr | JADC2 resilience; each combatant command needs distributed relay |
 | PNT (GPS alternative) | $1–2B/yr | Q-BID priority; airborne PNT fills gap between GPS and inertial |
 | Drone mothership | $1–3B/yr | Replicator/DAWG concept; forward deployment of attritable UAS |
-| **Total defense TAM** | **$7–14B/yr** | |
+| Electronic warfare | $2–4B/yr | Distributed airborne EW/SIGINT; supplements EC-130, EA-18G, ground-based systems |
+| **Total defense TAM** | **$9–18B/yr** | |
 
 ### Key Programs to Target
 
@@ -164,6 +165,47 @@ Why a formation at 65kft is hard to kill:
   attritable. Each shot costs the adversary more than the target.
 - **No fixed base:** No runway to crater, no hangar to bomb, no fuel
   depot to destroy. The aircraft *are* the infrastructure.
+
+### Distributed Electronic Warfare
+
+Formation HALE is a natural EW platform. Multiple small aircraft at
+65kft provide capabilities that single-aircraft or ground-based systems
+cannot match.
+
+**What formation adds to EW:**
+
+- **Geolocation resistance.** A single jammer is trivially geolocated by
+  cross-bearing. 4–6 spatially distributed transmitters, coordinated in
+  time and frequency, make geolocation extremely difficult.
+- **Wideband coverage.** Different aircraft can cover different frequency
+  bands simultaneously — one on comms, one on radar, one on datalinks.
+  A single aircraft must time-share across bands.
+- **SIGINT baseline.** Spatially separated receivers enable precision
+  emitter geolocation via time-difference-of-arrival (TDOA). A 4-aircraft
+  formation spread over 10–50 km provides excellent geometric diversity.
+- **Redundancy.** Kill one EW node, the remaining aircraft continue. The
+  formation can dynamically reallocate frequency coverage.
+- **Persistence.** Ground-based EW deploys and redeploys. Airborne EW on
+  manned aircraft (EA-18G, EC-130) has hours of station time. Formation
+  HALE provides months of continuous coverage.
+
+**Competitive advantage over existing EW platforms:**
+
+| Platform | Station time | Altitude | Cost | Distributed |
+|---|---|---|---|---|
+| EA-18G Growler | 4–6 hrs | 40kft | $67M/unit | No (single aircraft) |
+| EC-130H Compass Call | 8–10 hrs | 25kft | $100M+ | No |
+| Ground-based (EWPMT) | Indefinite | Ground | $10M+ | Fixed position |
+| **Formation HALE** | **Indefinite** | **65kft** | **$1M fleet** | **Yes (4–6 nodes)** |
+
+Formation HALE doesn't replace Growler for high-power standoff jamming,
+but it fills the persistent spectrum dominance role — continuous SIGINT
+collection, communications disruption, and radar degradation over weeks,
+not hours.
+
+**Key programs:** Army's Multi-Function Electronic Warfare (MFEW),
+DARPA's Spectrum Collaboration Challenge successors, INDOPACOM's
+electromagnetic spectrum operations requirements.
 
 ## Commercial Market
 
