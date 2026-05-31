@@ -22,28 +22,7 @@ if SAVE:
 
 import matplotlib.pyplot as plt
 
-from wingz.structures.beam import BeamStructure
-from wingz.solar.power import solar_irradiance, day_length_hours
-from wingz.aerodynamics.formation_aero import per_slot_drag_factor, FormationGeometry
-from wingz.cost.materials import fleet_cost, FleetCost
-from wingz.solar.energy_balance import required_coverage_fraction
-
-# ── constants ──────────────────────────────────────────────────────────────
-
-G = 9.81
-CL_MAX = 1.2
-BATT_ENERGY_DENSITY = 250.0
-PANEL_EFF = 0.38
-SOLAR_MARGIN = 3.0        # panel area = margin × minimum needed
-MAX_PANEL_COVERAGE = 0.90
-CD0 = 0.025
-OSWALD_E = 0.85
-RHO = 0.0889
-LAT_DEG = 30.0
-DOY = 172
-PLD_G_PER_W = 50  # g/W payload specific mass
-STALL_MARGIN_DAY = 1.15
-STALL_MARGIN_NIGHT = 1.03
+from wingz.evaluation.solver import solve_converged, find_max_payload
 
 CONFIGS = [
     ("1x60m", 1, 60),
@@ -55,140 +34,16 @@ CONFIGS = [
 COLORS = ["#2196F3", "#4CAF50", "#FF9800", "#E91E63"]
 
 
-# ── solver (fixed-AR geometry) ───────────────────────────────────────────────
-
-def _choose_ar(span):
-    """Pick a realistic design AR for a given span (6-14 range per spec)."""
-    ar = 5.0 + span / 6.0
-    return float(np.clip(ar, 6.0, 14.0))
-
-
-def _solve_config(N, span, pld_power=0.0):
-    """Converge an aircraft/fleet at a continuous payload power."""
-    rho = RHO
-    g = G
-    hw = 2.5
-    pld_mass_each = pld_power * PLD_G_PER_W / 1000 / N
-
-    AR = _choose_ar(span)
-    area_each = span ** 2 / AR
-    total_area = N * area_each
-    chord = span / AR
-
-    factors = per_slot_drag_factor(N, span, 0.1, FormationGeometry.V)
-    peak_irr = solar_irradiance(20000, LAT_DEG, DOY)
-    day_h = day_length_hours(LAT_DEG, DOY)
-    night_h = 24 - day_h
-    avg_irr = (2 / np.pi) * peak_irr
-    sk_total = 5.0 * max(0, N - 1)
-    hw_pwr = 15 + 3 * (N - 1)
-
-    struct_each = 5.0
-    batt_each = 5.0
-    beam = BeamStructure()
-
-    for _ in range(300):
-        ac = struct_each + hw + pld_mass_each + batt_each
-        W = ac * g
-        V_stall = np.sqrt(2 * W / (rho * area_each * CL_MAX))
-        V_cruise = STALL_MARGIN_DAY * V_stall
-        q = 0.5 * rho * V_cruise ** 2
-
-        drag = sum(
-            factors[j] * W ** 2 / (q * np.pi * OSWALD_E * span ** 2)
-            + q * area_each * CD0
-            for j in range(N)
-        )
-        total_pwr = drag * V_cruise + hw_pwr + sk_total + pld_power
-
-        # Night power at lower stall margin for battery sizing
-        V_night = STALL_MARGIN_NIGHT * V_stall
-        q_night = 0.5 * rho * V_night ** 2
-        drag_night = sum(
-            factors[j] * W ** 2 / (q_night * np.pi * OSWALD_E * span ** 2)
-            + q_night * area_each * CD0
-            for j in range(N)
-        )
-        total_pwr_night = drag_night * V_night + hw_pwr + sk_total + pld_power
-        new_batt = total_pwr_night * night_h / BATT_ENERGY_DENSITY / N
-        new_struct = beam.wing_mass(span, AR, ac)
-
-        if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
-            return None
-
-        if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05:
-            # Size panels to produce solar_margin × required energy
-            energy_24h = total_pwr * day_h + total_pwr_night * night_h
-            coverage = required_coverage_fraction(
-                energy_required_Wh=energy_24h,
-                solar_margin=SOLAR_MARGIN,
-                wing_area_m2=total_area,
-                panel_efficiency=PANEL_EFF,
-                altitude_m=20000,
-                latitude_deg=LAT_DEG,
-                day_of_year=DOY,
-                max_coverage=MAX_PANEL_COVERAGE,
-            )
-            panel_area = total_area * coverage
-            avail = panel_area * PANEL_EFF * avg_irr * day_h
-            solar_surplus_ratio = (avail - energy_24h) / energy_24h
-            fc = fleet_cost(
-                N=N,
-                structural_mass_kg=new_struct * N,
-                solar_panel_area_m2=panel_area,
-                battery_capacity_kWh=new_batt * N * BATT_ENERGY_DENSITY / 1000,
-                span_m=span,
-                n_full_nav=1,
-                n_basic_nav=N - 1,
-                production_run=10,
-            )
-            return {
-                "N": N, "span": span, "AR": AR, "chord": chord,
-                "area_each": area_each, "total_area": total_area,
-                "panel_area": panel_area, "panel_coverage": coverage,
-                "struct_each": new_struct, "batt_each": new_batt,
-                "ac_mass": ac, "fleet_mass": N * ac,
-                "V_cruise": V_cruise,
-                "total_power": total_pwr, "solar_surplus_ratio": solar_surplus_ratio,
-                "payload_power": pld_power,
-                "payload_mass_total": pld_mass_each * N,
-                "cost": fc.total, "cost_breakdown": fc,
-                "avail_Wh": avail, "day_h": day_h, "night_h": night_h,
-            }
-
-        batt_each = 0.7 * batt_each + 0.3 * new_batt
-        struct_each = 0.7 * struct_each + 0.3 * new_struct
-
-    return None
-
-
-def _max_payload_power(N, span):
-    """Find max continuous payload power that remains 24h energy feasible."""
-    lo, hi = 0.0, 20000.0
-    best = None
-
-    for _ in range(45):
-        mid = (lo + hi) / 2
-        result = _solve_config(N, span, pld_power=mid)
-
-        if result is None or result["solar_surplus_ratio"] < 0:
-            hi = mid
-        else:
-            lo = mid
-            best = result
-
-    if best is None:
-        best = _solve_config(N, span, pld_power=0.0)
-    return 0.0 if best is None else best["payload_power"]
-
-
 def payload_power_sweep(N, span, n_points=25):
     """Sweep continuous payload power across the 24h-feasible range."""
-    max_pld_pwr = _max_payload_power(N, span)
+    best = find_max_payload(N, span)
+    if best is None:
+        return []
+    max_pld_pwr = best["payload_power"]
 
     rows = []
     for pld_pwr in np.linspace(0, max_pld_pwr, n_points):
-        result = _solve_config(N, span, pld_power=pld_pwr)
+        result = solve_converged(N, span, pld_power=pld_pwr)
         if result is not None:
             rows.append(result)
 
