@@ -214,3 +214,46 @@ for these small unmanned aircraft.
 6. **Leader rotation** is already modeled correctly (average power sizing)
 7. **AFS not worth it** at these scales — structural mass too small
 8. **Battery heating** is <2% overhead with good insulation — manageable
+
+## Iteration 2 Results
+
+### OOA Manufacturing Cost Impact
+
+Switching from autoclave to OOA (out-of-autoclave) processing:
+
+| Config | Autoclave | OOA | Savings | $/kg (OOA) |
+|---|---|---|---|---|
+| 6x20m AR=16 | $5.9M | $4.8M | $1.1M | $54k/kg |
+| 6x25m AR=18 | $8.6M | $6.7M | $1.9M | $47k/kg |
+| 6x30m AR=18 | $12.7M | $9.6M | $3.1M | $43k/kg |
+| 6x40m AR=18 | $23.4M | $17.0M | $6.3M | $38k/kg |
+
+OOA saves 15-27% on total fleet cost. The savings grow with span because
+autoclave capital scales as span^2.5 while OOA ovens scale linearly.
+
+### Winter-Constrained Year-Long Design
+
+For year-long ops at 30°N, design to winter solstice (shortest day):
+
+**Cheapest fleet for ≥500W payload year-round:**
+
+| Config | Winter | Summer | Cost | Fleet mass |
+|---|---|---|---|---|
+| **6x20m AR=16** | **509 W** | **1,781 W** | **$5.55M** | 347 kg |
+| 4x25m AR=18 | 503 W | 1,674 W | $6.04M | 314 kg |
+| 3x30m AR=20 | 507 W | 1,641 W | $7.08M | 301 kg |
+
+The 6x20m formation is cheapest. In summer it delivers 3.5× the winter
+payload — excess capacity for burst operations or payload swap rotation.
+
+### Cost per Fleet Size (Year-Long ≥500W at 30°N)
+
+| N | Best config | Cost |
+|---|---|---|
+| 2 | 2x50m AR=18 | $18.8M |
+| 3 | 3x30m AR=20 | $7.1M |
+| 4 | 4x25m AR=18 | $6.0M |
+| 6 | 6x20m AR=16 | $5.6M |
+
+Larger formations are dramatically cheaper for the same capability.
+N=6 costs 70% less than N=2 for the same year-round payload.
