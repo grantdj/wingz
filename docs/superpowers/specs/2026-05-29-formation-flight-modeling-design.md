@@ -160,7 +160,7 @@ Formation geometries: echelon, V, inline.
 
 - Solar irradiance vs. altitude — ~1361 W/m² at 20 km (above most atmosphere)
 - Latitude and season — day length and solar elevation angle drive available energy
-- Panel efficiency — 25-30% for current lightweight flexible cells
+- Panel efficiency — 38% for MicroLink III-V ELO cells (flight-proven on Zephyr/PHASA-35)
 - Panel coverage fraction — upper wing surface minus control surfaces, spar caps, etc.
 
 #### `energy_balance.py` — Endurance Gate

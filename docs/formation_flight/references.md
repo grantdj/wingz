@@ -245,23 +245,28 @@ altitude for range or endurance.
 
 ### Station-Keeping Power
 
-`P_sk = k · T_eff · (1/d) · b^1.5`
+Servo-based model. Total station-keeping power:
 
-where T_eff = turbulence_intensity × wake_factor
+```
+P_sk = N_servos(4) × P_servo(2.5W) × duty_cycle
+duty_cycle = clamp(base_duty × turb_scale × tol_scale × wake_factor, 0, 0.9)
+```
 
 Used in: `wingz/control/station_keeping.py`
 
-Empirical model. The span^1.5 exponent reflects that correction forces scale
-with wing loading (area × dynamic pressure) and the moment arm of control
-surfaces. The inverse tolerance reflects increased control effort for tighter
-formation spacing.
+Typical values per follower aircraft:
+- Light turbulence: ~3.8W
+- Moderate turbulence: ~7.5W
+- Heavy turbulence: ~9W (capped at 90% duty)
+
+Parameters:
+- N_servos = 4 (aileron ×2, elevator, rudder)
+- P_servo = 2.5W per servo when actively correcting
+- base_duty = 0.25 (light turbulence, 2m tolerance)
+- turb_scale, tol_scale, wake_factor: dimensionless multipliers
 
 - Pahle, J. et al., "An Initial Flight Investigation of Formation Flight for Drag Reduction on the C-17 Aircraft," AIAA 2012-4802, 2012. (Measured station-keeping workload)
 - Hanson, C.E. et al., "The DARPA/NASA Automated Airborne Refueling Demonstration," AIAA 2006-6610, 2006. (Precision relative navigation requirements)
-
-The k=50 constant and specific scaling are calibrated for order-of-magnitude
-reasonableness, not validated against flight data. This model should be
-replaced with higher-fidelity estimates as the project matures.
 
 ## Cost Models
 
@@ -277,16 +282,23 @@ dollar values when per-unit cost data for solar HALE platforms is unavailable.
 
 ### Bottom-Up Materials
 
-`cost = C_cf·m + C_solar·A + C_avionics·m_ctrl + C_bat·E + C_asm·m`
+`cost = C_cf·m + C_solar·A + C_avionics + C_bat·E + C_asm·m + C_capital`
 
 Used in: `wingz/cost/materials.py`
 
-Component pricing based on market surveys:
-- Carbon fiber composite: ~$120/kg — aerospace supply chain pricing
-- Flexible solar cells: ~$800/m² — Alta Devices / SunPower thin-film pricing
-- Avionics: ~$5000/kg — tactical UAV component costs (GPS, IMU, comms)
-- Li-ion batteries: ~$300/kWh — 2024 cell-level pricing
-- Assembly: ~$200/kg structure — rough aerospace labor estimate
+Component pricing based on 2024-2026 aerospace market data:
+- Carbon fiber composite: $350/kg base at 10m span, scales as (span/10)^0.8 per RAND R-4016
+- Solar cells: $100/W ($30,000/m²) — MicroLink III-V ELO at mid-volume
+  - Source: MicroLink IARPA SOLSTICE presentation (2024), NREL III-V roadmap
+- Avionics: $1,500–$25,000 per unit (role-dependent, not per-kg)
+  - $25,000 for full nav suite (redundant IMU, dual RTK, SATCOM)
+  - $1,500 for basic autopilot + GPS
+- Batteries: $3,000/kWh — aerospace-qualified pack (includes BMS, testing)
+- Assembly: $300/kg structure (scales with span complexity)
+- Manufacturing capital (amortized over production run):
+  - Autoclave: $2M base at 10m, scales as span^2.5 (custom above ~15m)
+  - Wing mold: $50k base at 10m, scales as span^1.5
+  - Factory/cleanroom: $500k base at 10m, scales as span^1.5
 
 These are order-of-magnitude estimates. The materials cost model is a
 research area that will evolve as better data becomes available.
