@@ -48,17 +48,24 @@ If it goes down, the mission is over. A formation of 4–6 small aircraft:
 
 ## Transit Analysis
 
-Self-deployment from CONUS (West Coast) to Guam: ~5,200 nm.
+Self-deployment from CONUS (West Coast) to Guam: ~5,200 nm (9,630 km).
 
-| Config | Cruise speed | No wind | 10 m/s headwind | 20 m/s headwind |
-|---|---|---|---|---|
-| 4×20m | 28 m/s (54 kts) | **4.0 days** | 6.2 days | 13.9 days |
-| 6×15m | 25 m/s (49 kts) | **4.5 days** | 7.4 days | 22.3 days |
+The 3× solar margin enables a **sprint transit mode**: aircraft fly at
+maximum speed during the day (using all excess solar power for
+propulsion) and minimum speed at night in formation (conserving battery).
+Day sprint speed is 2.2× normal cruise — 56 kts vs 25 kts for 4×20m.
+
+| Config | Mode | No wind | 10 m/s headwind |
+|---|---|---|---|
+| 4×20m | Normal cruise | 8.6 days | 17+ days |
+| 4×20m | **Sprint transit** | **5.2 days** | **9.7 days** |
+| 6×15m | Normal cruise | 8.2 days | 17+ days |
+| 6×15m | **Sprint transit** | **4.9 days** | **8.8 days** |
 
 At 65,000 ft (stratosphere), winds are typically 10–30 m/s westerly at
 mid-latitudes but weaken near the equator. Optimal routing south through
 the tropics adds distance but avoids the worst headwinds. Realistic
-transit: **5–8 days** with weather-optimized routing.
+sprint transit: **5–10 days** with weather-optimized routing.
 
 For comparison:
 - Sealift (cargo ship): 14–21 days
@@ -67,7 +74,11 @@ For comparison:
 
 **Pre-positioning without pre-positioning.** Aircraft can self-deploy on
 strategic warning and be on-station over Guam in under a week — no bases,
-no fuel, no logistics tail.
+no fuel, no logistics tail. Sprint transit is critical: it cuts 40% off
+transit time vs normal cruise.
+
+See [operational_concepts.md](operational_concepts.md) for detailed
+sprint transit analysis.
 
 ## Defense Market
 
