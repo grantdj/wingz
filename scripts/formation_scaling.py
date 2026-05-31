@@ -21,116 +21,9 @@ if SAVE:
     matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-from wingz.structures.beam import BeamStructure
-from wingz.solar.power import solar_irradiance, day_length_hours, _solar_declination
-from wingz.aerodynamics.formation_aero import (
-    per_slot_drag_factor, effective_span, FormationGeometry,
-)
-from wingz.cost.materials import fleet_cost as fc_fn
 
-beam = BeamStructure()
-G = 9.81
-RHO = 0.0889
-BATT_DENS = 250
-V = 25.0
-OSWALD = 0.85
-CD0 = 0.028  # boom-tail
-LAT = 30
-DOY = 172
-
-day_h = day_length_hours(LAT, DOY)
-night_h = 24 - day_h
-sunrise = 12 - day_h / 2
-peak_irr = solar_irradiance(20000, LAT, DOY)
-avg_irr = (2 / np.pi) * peak_irr
-
-
-def solar_at_hour(total_area, hod):
-    ha = np.radians((hod - 12) * 15)
-    dec = _solar_declination(DOY)
-    sin_el = (np.sin(np.radians(LAT)) * np.sin(dec)
-              + np.cos(np.radians(LAT)) * np.cos(dec) * np.cos(ha))
-    if sin_el <= 0:
-        return 0
-    tau = 0.3 * np.exp(-20000 / 8500)
-    return total_area * 0.8 * 0.38 * 1361 * np.exp(-tau / max(sin_el, 0.01))
-
-
-def sim_dawn(total_area, pwr, batt_cap):
-    dt = 0.05
-    batt = 0
-    for s in range(int(24 / dt)):
-        hod = (sunrise + s * dt) % 24
-        net = solar_at_hour(total_area, hod) - pwr
-        if net > 0:
-            batt = min(batt + net * dt, batt_cap)
-        else:
-            batt += net * dt
-    return batt / batt_cap if batt_cap > 0 else -1
-
-
-def solve_max_payload(N, span, AR, g_per_W=50):
-    """Find max payload power where dawn battery >= 0%."""
-    area_each = span**2 / AR
-    total_area = N * area_each
-    factors = per_slot_drag_factor(N, span, 0.1, FormationGeometry.V)
-    q = 0.5 * RHO * V**2
-    hw = 2.5
-    sk = 5.0 * max(0, N - 1)
-    hp = 15 + 3 * (N - 1)
-
-    lo_p, hi_p = 0, 15000
-    best = None
-    for _ in range(30):
-        mid_p = (lo_p + hi_p) / 2
-        pld_each = mid_p * g_per_W / 1000 / N
-        s = 5.0
-        b = 5.0
-        converged = False
-        for _ in range(200):
-            ac = s + hw + pld_each + b
-            W = ac * G
-            drag = sum(
-                factors[j] * W**2 / (q * np.pi * OSWALD * span**2)
-                + q * area_each * CD0
-                for j in range(N)
-            )
-            pwr = drag * V + hp + sk + mid_p
-            nb = pwr * night_h / BATT_DENS / N
-            ns = beam.wing_mass(span, AR, ac)
-            if not np.isfinite(nb) or nb > 1e5:
-                break
-            if abs(nb - b) < 0.05 and abs(ns - s) < 0.05:
-                converged = True
-                break
-            b = 0.7 * b + 0.3 * nb
-            s = 0.7 * s + 0.3 * ns
-        if not converged:
-            hi_p = mid_p
-            continue
-        bc = b * BATT_DENS * N
-        dawn = sim_dawn(total_area, pwr, bc)
-        if dawn >= -0.02:
-            lo_p = mid_p
-            pm = pld_each * N
-            b_eff = effective_span(N, span, 0.1, FormationGeometry.V)
-            fc = fc_fn(
-                N=N, structural_mass_kg=ns * N, solar_panel_area_m2=total_area,
-                battery_capacity_kWh=nb * N * 250 / 1000,
-                n_full_nav=1, n_basic_nav=N - 1, production_run=10,
-            )
-            best = {
-                "pp": mid_p, "pm": pm, "cost": fc.total,
-                "dpkg": fc.total / max(0.1, pm),
-                "ac": ac, "fleet": N * ac,
-                "struct": ns, "batt": nb, "pld_each": pld_each,
-                "pwr": pwr, "drag": drag, "factors": factors,
-                "b_eff": b_eff, "area_each": area_each,
-                "avg_factor": sum(factors) / N,
-            }
-        else:
-            hi_p = mid_p
-    return best
+from wingz.evaluation.solver import find_max_payload
+from wingz.aerodynamics.formation_aero import effective_span, FormationGeometry
 
 
 def main():
@@ -153,19 +46,26 @@ def main():
                 "fleet": [], "beff": [], "avg_factor": [],
                 "pp": [], "ac": [], "pwr": []}
         for N in Ns:
-            r = solve_max_payload(N, span, AR)
+            r = find_max_payload(N, span, AR=AR)
             if r is None:
                 continue
+            pm = r["payload_mass_total"]
+            cost = r["cost"]
+            dpkg = cost / max(0.1, pm)
+            b_eff = effective_span(N, span, 0.1, FormationGeometry.V)
+            from wingz.aerodynamics.formation_aero import per_slot_drag_factor
+            factors = per_slot_drag_factor(N, span, 0.1, FormationGeometry.V)
+            avg_factor = sum(factors) / N
             data["N"].append(N)
-            data["dpkg"].append(r["dpkg"] / 1000)  # $k/kg
-            data["pm"].append(r["pm"])
-            data["cost"].append(r["cost"] / 1e6)
-            data["fleet"].append(r["fleet"])
-            data["beff"].append(r["b_eff"])
-            data["avg_factor"].append(r["avg_factor"])
-            data["pp"].append(r["pp"])
-            data["ac"].append(r["ac"])
-            data["pwr"].append(r["pwr"])
+            data["dpkg"].append(dpkg / 1000)  # $k/kg
+            data["pm"].append(pm)
+            data["cost"].append(cost / 1e6)
+            data["fleet"].append(r["fleet_mass"])
+            data["beff"].append(b_eff)
+            data["avg_factor"].append(avg_factor)
+            data["pp"].append(r["payload_power"])
+            data["ac"].append(r["ac_mass"])
+            data["pwr"].append(r["P_day"])
             print(f" N={N}", end="", flush=True)
         print()
         all_data[label] = data
