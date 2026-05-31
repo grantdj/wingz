@@ -1,112 +1,162 @@
 # Operational Concepts — Formation Solar HALE
 
-## 1. Hybrid Day/Night Operations
+## Core Concept
 
-**Solo by day, formation at night.**
+One aircraft, one battery, one night profile. Every day the aircraft
+climbs to high altitude and every night it descends to denser air for
+efficient formation flight. The only variable is what the aircraft does
+with its daytime solar surplus:
 
-During the day, aircraft fly independently — spread out for wide-area
-sensor coverage, no station keeping, no collision risk. The 3× solar
-margin provides excess energy regardless of flight mode.
+- **Transit:** Dump it all into speed (sprint)
+- **On-station:** Cruise gently, spread out for sensor coverage
 
-At dusk (~30 min), aircraft rendezvous and establish V-formation. Wake
-vortex surfing reduces induced drag ~35%, cutting night power draw and
-extending battery life. At dawn, formation disperses.
+There is no separate "dash mode" or "loiter mode" in the hardware. It's
+the same aircraft, same battery, same altitude cycling. The autopilot
+simply chooses speed vs coverage based on mission phase.
 
-The formation drag benefit is load-bearing only at night. During the day,
-it's irrelevant — there's 3× more solar energy than needed. This means
-formation control software only needs to handle calm nighttime
-stratospheric conditions, not turbulent daytime thermals.
+## Daily Altitude Cycle
 
-See [hybrid_ops.md](hybrid_ops.md) for detailed analysis.
+The aircraft always cycles altitude — climb by day, descend by night.
+This is fundamental to the energy balance, not an optional optimization.
 
-## 2. Sprint Transit — Use Excess Solar for Speed
+```
+22km ──────────┐                    ┌──────────
+  Day: sprint  │    Dusk descent    │  Day: sprint
+  or cruise    │         ↓          │  or cruise
+               │                    │
+15-18km        └────────────────────┘
+                Night: formation
+                slow, dense air
+                gravity-assisted
+```
 
-The 3× solar margin means the panels produce roughly 3× more power than
-needed for normal cruise. During transit, that excess power can drive the
-aircraft at much higher speeds during daylight hours.
+**Why cycle:**
+- **Night at lower altitude** — denser air means lower stall speed,
+  lower power to stay aloft, smaller battery. Flying at 15km vs 22km
+  at night cuts battery mass by 60%.
+- **Gravity assist** — descending 4–7 km converts potential energy into
+  flight time. At 22km→15km, this provides ~190W of free power all
+  night, directly reducing battery drain.
+- **Day at high altitude** — better solar irradiance (thinner atmosphere),
+  higher true airspeed for the same indicated airspeed (faster sprint).
+- **Climb cost is paid by solar** — climbing back up in the morning
+  costs energy, but there's 3× solar margin to cover it.
 
-### Power Budget During Sprint
+### Altitude Cycling Analysis (4×20m, 200W payload)
 
-The solar panels must simultaneously:
-1. Power the aircraft in flight
+| Profile | Batt/ac | Night speed | Sprint speed | Guam transit |
+|---|---|---|---|---|
+| Fixed 20km | 14.5 kg | 11.6 m/s | 28.7 m/s | 5.2 days |
+| Fixed 22km | 20.6 kg | 14.8 m/s | 36.1 m/s | 4.1 days |
+| **22km / 18km cycle** | **8.5 kg** | **9.0 m/s** | **30.1 m/s** | **5.2 days** |
+| 22km / 15km cycle | 4.8 kg | 6.7 m/s | 28.0 m/s | 5.9 days |
+| 20km / 15km cycle | 5.8 kg | 6.8 m/s | 24.7 m/s | 6.5 days |
+
+The **22km/18km cycle** is the sweet spot: same transit time as fixed
+20km (5.2 days) but with **40% less battery** (8.5 vs 14.5 kg). Lighter
+aircraft, less structure, less cost.
+
+## Daytime Operations
+
+### Transit (Sprint)
+
+During transit, all excess solar power goes to propulsion. The aircraft
+sprint solo at 2.2× cruise speed during the day, then form up and slow
+down at night.
+
+**Power budget during sprint:**
+
+The solar panels simultaneously:
+1. Power the aircraft at sprint speed
 2. Charge batteries for the night
+3. Power the climb back to day altitude
 
-After reserving power for battery charging, the remaining solar budget is
-available for propulsion. This is 4–5× the normal cruise power.
+After reserving for batteries and climb, the remaining 4–5× normal
+cruise power drives the aircraft at ~30 m/s (58 kts) vs ~13 m/s
+(25 kts) normal cruise.
 
-### Speed Analysis (4×20m, 200W payload)
+**Transit time: CONUS to Guam (9,630 km, 22km/18km cycling)**
 
-| Phase | Speed | Power |
+| Conditions | 4×20m | 6×15m |
 |---|---|---|
-| Normal cruise (1.15× stall) | 13.0 m/s (25 kts) | 1,767 W |
-| Night formation (1.03× stall) | 11.6 m/s (23 kts) | 1,213 W |
-| **Day sprint (avg solar)** | **28.6 m/s (56 kts)** | **7,285 W** |
-| Day sprint (peak, noon) | 34.3 m/s (67 kts) | ~13,000 W |
+| No wind | 5.2 days | 4.9 days |
+| 10 m/s headwind | ~10 days | ~9 days |
 
-Sprint speed is **2.2× normal cruise**. The aircraft fly fast during the
-day and slow at night. This increases the effective 24-hour average speed
-by 1.7×.
+Sprint is critical against headwinds. At normal cruise (13 m/s), a
+10 m/s headwind leaves only 3 m/s ground speed — the transit balloons
+to weeks. At sprint (30 m/s), the same headwind leaves 20 m/s — still
+making real progress.
 
-### Transit Time: CONUS to Guam (9,630 km)
+**Formation doesn't help sprint speed.** At sprint speed, parasite drag
+is 94% of total drag. Formation wake surfing only reduces induced drag
+(the other 6%). The sprint speed gain from formation is +1% — negligible.
+Aircraft fly solo during the day regardless.
 
-| Mode | 4×20m | 6×15m |
-|---|---|---|
-| Normal cruise (24h) | 8.6 days | 8.2 days |
-| **Sprint (day fast, night slow)** | **5.2 days** | **4.9 days** |
+### On-Station (Loiter)
 
-With typical headwinds (10 m/s):
+On-station, the aircraft cruise at minimum power and spread out for
+sensor coverage. The excess solar power goes unused (or powers payload
+at higher duty cycle).
 
-| Mode | 4×20m | 6×15m |
-|---|---|---|
-| Normal cruise | 17+ days | 17+ days |
-| **Sprint** | **9.7 days** | **8.8 days** |
+**Day formation is unnecessary on-station.** The 3× solar margin means
+energy balance closes easily whether solo or in formation. Solo
+operations provide:
+- Wide-area sensor coverage (4 aircraft, 4 separate tracks)
+- No collision risk during turbulent daytime hours
+- No station keeping power draw
+- Simpler control (each aircraft runs independently)
 
-Sprint mode cuts transit time by 40% in zero wind and is even more
-important in headwinds — the higher sprint speed maintains positive
-ground speed against winds that would nearly stall a normal-cruise
-aircraft.
+## Nighttime Operations
 
-### Why This Works
+Every night, regardless of mission phase:
 
-Drag power scales as V³ at high speed (parasite drag dominates). Doubling
-speed requires roughly 8× the power. But the 3× solar margin provides
-4–5× the propulsion budget during the day, which translates to ~2.2×
-speed. The nonlinear drag penalty limits the speed gain, but the 14-hour
-day window at summer solstice means most of the transit distance is
-covered during the sprint phase.
+1. **Dusk (~30 min):** Aircraft descend from day altitude and rendezvous
+   into V-formation
+2. **Night (10 hours):** Formation flight at 1.03× stall speed in dense
+   air. Wake vortex surfing reduces induced drag ~35%. Gravity assist
+   from continued gentle descent provides free power.
+3. **Dawn (~30 min):** Formation disperses, aircraft climb back to day
+   altitude and resume solo ops
 
-### Operational Implications
+**Why formation matters at night:**
+- At low speed, induced drag is 50–60% of total drag — the formation
+  benefit is real and load-bearing
+- Without formation, 6×15m aircraft can't survive the night at all
+  (mass doesn't converge — can't carry enough battery)
+- Stratosphere is calm at night — ideal conditions for precision
+  formation flying
 
-**Pre-positioning on strategic warning.** A fleet of formation HALE
-aircraft at a CONUS base (e.g., Edwards AFB) can self-deploy to Guam in
-5–10 days on strategic warning. No airlift, no tankers, no overflight
-permissions, no forward base agreements. The aircraft are their own
-logistics.
+**Station keeping is servo power, not thrust.** The control surfaces
+make continuous micro-corrections (4 servos, ~4–9W total). Motor thrust
+stays at trim. See station_keeping.py for the model.
 
-**Phased deployment.** Launch one fleet per day for a week. By day 12,
-you have 7 fleets on-station with the first already operational for
-several days. Each fleet provides persistent ISR, comms relay, or PNT
-over a different sector.
+## Mission Profiles
 
-**Route optimization.** Transit routing through lower latitudes (longer
-days, weaker headwinds) trades distance for speed. A great-circle route
-from LAX to Guam passes through mid-latitude jet stream; a southern
-routing via Hawaii adds ~15% distance but can halve headwind penalties.
+### Persistent ISR
 
-## 3. Mothership Operations
+- Day: Solo at 22km, spread for wide-area coverage, EO/IR/SAR/SIGINT
+- Night: Formation at 15–18km, maintaining coverage over primary target
+- Endurance: Indefinite (months)
 
-Formation carries deployable small UAS (Switchblade 600, Altius-600
-class) at 65,000 ft.
+### Comms Relay (JADC2)
 
-**Concept of operations:**
-1. Formation loiters over area of interest for weeks/months
-2. On command, designated aircraft deploys small UAS from altitude
-3. Small UAS descend into denied airspace — 65kft gives enormous
-   standoff; targets cannot intercept before the UAS reaches them
-4. Formation continues mission with remaining aircraft
-5. Resupply: replacement aircraft self-deploy from rear area and join
+Line-of-sight relay from 65kft. Each aircraft provides 300nm coverage
+radius. A chain of formations bridges the Pacific without SATCOM.
 
-**Payload distribution example (4×20m):**
+```
+Guam ←300nm→ Formation A ←300nm→ Formation B ←300nm→ Fleet at sea
+```
+
+### PNT Source
+
+Broadcast assured PNT signals as GPS alternative in denied environments.
+4 aircraft spread during the day cover ~1,200 nm of coastline. At night,
+formation maintains coverage over the primary operating area.
+
+### Mothership
+
+Carry and deploy small UAS (Switchblade 600, Altius-600) from 65kft.
+Deploy on command, continue mission with remaining aircraft.
 
 | Aircraft | Role | Payload |
 |---|---|---|
@@ -115,64 +165,19 @@ class) at 65,000 ft.
 | 3 | Arsenal | 4× Switchblade 600, 50W standby |
 | 4 | Arsenal | 4× Switchblade 600, 50W standby |
 
-Lose aircraft 3 → aircraft 4 still has 4 munitions. Lose the comms
-relay → degrade to LOS only. Lose the leader → another aircraft
-assumes lead. Graceful degradation at every level.
+### Electronic Warfare
 
-## 4. Persistent PNT Source
+Distributed EW from multiple airborne nodes. Multiple transmit points
+are hard to geolocate, hard to jam. Geometric diversity enables
+direction-finding and SIGINT.
 
-Broadcast assured position/navigation/timing signals from 65,000 ft as
-a GPS alternative in contested environments.
+## Summary
 
-**Coverage:** A single aircraft at 65kft has a line-of-sight horizon
-radius of ~300 nm (555 km). A formation of 4 aircraft spread during the
-day covers ~1,200 nm of coastline or ~960,000 km² of ocean.
+| Phase | Altitude | Speed | Formation | Power use |
+|---|---|---|---|---|
+| **Day transit** | 22km (climb) | Sprint (30 m/s) | Solo | All excess → speed |
+| **Day on-station** | 22km (climb) | Cruise (13 m/s) | Solo, spread | Excess unused / payload |
+| **Night (always)** | 15–18km (descend) | Min power (9 m/s) | V-formation | Battery + gravity assist |
 
-**Accuracy:** Airborne PNT from known position with precision clock can
-provide meter-level accuracy to receivers within line of sight. Not as
-good as GPS (centimeter), but far better than inertial drift in a GPS-
-denied environment.
-
-**Resilience:** The PNT source is mobile, hard to jam (directional
-transmit from 65kft), and distributed across multiple aircraft. Destroying
-it requires finding and killing each aircraft individually.
-
-## 5. Comms Relay for JADC2
-
-Line-of-sight communications relay from 65,000 ft.
-
-**Problem:** In a Pacific conflict, SATCOM may be degraded by ASAT weapons.
-Surface ships and ground forces need resilient beyond-line-of-sight comms.
-
-**Solution:** Formation HALE at 65kft bridges the gap. Each aircraft is a
-relay node with 300nm line-of-sight radius. A chain of formations across
-the Pacific creates a persistent, mobile communications backbone that
-doesn't depend on space assets.
-
-**Topology:**
-```
-Guam ←300nm→ Formation A ←300nm→ Formation B ←300nm→ Fleet at sea
-```
-
-Three formations chain-link across 900nm of ocean with full duplex
-data relay. If one formation is attacked, adjacent formations can
-reposition to close the gap.
-
-## 6. Electronic Warfare
-
-Multiple small aircraft at 65,000 ft provide distributed EW capability.
-
-**Advantages of distribution:**
-- Multiple transmit points make the source hard to geolocate
-- Wideband coverage from spatially separated platforms
-- Redundancy — jamming one aircraft doesn't silence the formation
-- Geometric diversity for direction-finding and SIGINT
-
-## Summary: Operating Modes
-
-| Mode | Day ops | Night ops | Use case |
-|---|---|---|---|
-| **Loiter** | Solo, spread | Formation | Persistent ISR, comms, PNT on-station |
-| **Sprint transit** | Solo, max speed | Formation, min power | Self-deploy CONUS → theater |
-| **Mothership** | Solo ISR + standby | Formation | Arsenal for attritable UAS |
-| **Relay chain** | Formation (tight) | Formation | JADC2 comms backbone |
+One aircraft. One battery. One night profile. Sprint or loiter is just
+a throttle setting.
