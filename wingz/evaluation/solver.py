@@ -42,6 +42,34 @@ def choose_ar(span: float, min_ar: float = 6.0, max_ar: float = 14.0) -> float:
     return float(np.clip(ar, min_ar, max_ar))
 
 
+def re_adjusted_cl_max(chord: float, velocity: float = 25.0,
+                       rho: float = RHO_20KM) -> float:
+    """
+    CL_max adjusted for Reynolds number at altitude.
+
+    At 20km, kinematic viscosity is ~1.5e-4 m²/s (17× sea level).
+    Low Re causes laminar separation bubbles and reduced CL_max.
+
+    Re > 500k: CL_max = 1.2 (standard airfoil data)
+    200k-500k: CL_max = 1.0 (transition effects)
+    100k-200k: CL_max = 0.85 (laminar separation)
+    < 100k:    CL_max = 0.7 (very low Re, model marginal)
+    """
+    nu = 1.5e-4  # kinematic viscosity at 20km (m²/s)
+    Re = velocity * chord / nu
+
+    if Re > 500000:
+        return 1.2
+    elif Re > 200000:
+        # Linear interpolation 1.0 → 1.2 over 200k-500k
+        return 1.0 + 0.2 * (Re - 200000) / 300000
+    elif Re > 100000:
+        # Linear interpolation 0.85 → 1.0 over 100k-200k
+        return 0.85 + 0.15 * (Re - 100000) / 100000
+    else:
+        return 0.7
+
+
 def _hw_power(N: int) -> float:
     """Total hardware power for N aircraft (1 leader + N-1 followers)."""
     return HARDWARE_POWER_LEADER + HARDWARE_POWER_FOLLOWER * (N - 1)
@@ -152,8 +180,12 @@ def solve_converged(
         ac = struct_each + hw + pld_mass_each + batt_each
         W = ac * GRAVITY
 
+        # Re-adjusted CL_max based on chord and expected cruise speed
+        chord = span / AR
+        cl_max_eff = re_adjusted_cl_max(chord, velocity=25.0, rho=rho)
+
         # Day speed
-        V_stall = np.sqrt(2 * W / (rho * area_each * CL_MAX))
+        V_stall = np.sqrt(2 * W / (rho * area_each * cl_max_eff))
         V_day = STALL_MARGIN_DAY * V_stall
         V_night = STALL_MARGIN_NIGHT * V_stall
 
@@ -198,6 +230,7 @@ def solve_converged(
                 "struct_each": new_struct, "batt_each": new_batt,
                 "ac_mass": ac, "fleet_mass": N * ac,
                 "V_stall": V_stall, "V_day": V_day, "V_night": V_night,
+                "cl_max_eff": cl_max_eff, "reynolds": 25.0 * chord / 1.5e-4,
                 "wing_loading": W / area_each,
                 "P_day": P_day, "P_night": P_night,
                 "solar_surplus_ratio": solar_surplus_ratio,
