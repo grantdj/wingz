@@ -257,3 +257,70 @@ payload — excess capacity for burst operations or payload swap rotation.
 
 Larger formations are dramatically cheaper for the same capability.
 N=6 costs 70% less than N=2 for the same year-round payload.
+
+## Iteration 3: Battery Density + Combined Optimization
+
+### Battery Technology Impact
+
+At fixed mission (6x20m AR=16, winter 30°N):
+
+| Battery tech | Wh/kg | Battery/ac | Mass saved | More payload |
+|---|---|---|---|---|
+| Li-ion (current) | 250 | 43 kg | baseline | baseline |
+| Li-ion (year-long derated) | 175 | 62 kg | -19 kg | -372 W |
+| Si-anode Li-ion | 350 | 31 kg | +12 kg | +248 W |
+| Solid-state (2028) | 400 | 27 kg | +16 kg | +325 W |
+| Solid-state (target) | 500 | 22 kg | +22 kg | +434 W |
+
+Solid-state at 400 Wh/kg saves 16 kg per aircraft — nearly doubles
+winter payload from 509W to ~834W. Cold-tolerant (no heating needed)
+and 1,100+ cycle life eliminates degradation concerns.
+
+### Recommended Designs (OOA Manufacturing)
+
+Two design points depending on budget vs capability:
+
+**Budget option: 6x20m AR=16 — $4.5M (OOA)**
+- Cheapest fleet that delivers ≥500W year-round at 30°N
+- 509W winter / 1,781W summer
+- 58 kg per aircraft, 347 kg fleet
+- Chord: 1.25m, Re: 208k (marginal but viable)
+
+**Capability option: 6x30m AR=20 — $8.4M (OOA)**
+- Best $/kg payload at higher capability
+- 1,420W winter / 4,183W summer
+- 120 kg per aircraft, 720 kg fleet
+- Chord: 1.50m, Re: 250k (comfortable)
+- $/kg: $118k (OOA)
+
+### Solid-State Battery Impact (2028+)
+
+With 400 Wh/kg solid-state batteries (conservative 2028 target):
+- Battery mass drops 38% → lighter aircraft → less power needed
+- Estimated effect on budget option: 509W → ~750W winter payload
+- Or: same payload at lower cost (smaller wing area, less solar)
+- Cold-tolerant: eliminates battery heating subsystem entirely
+
+### Year-Long Endurance Strategy
+
+For 30°N year-round operations:
+1. **Size to winter solstice** (10.1h day / 13.9h night)
+2. **Accept 2.9× seasonal variation** in payload capacity
+3. **Use summer excess** for burst operations, payload swap, or data-intensive missions
+4. **Leader rotation every 30-60 min** (already modeled)
+5. **Battery swap in winter** if payload needs exceed winter capacity
+6. **Solid-state batteries (2028)** eliminate cold/degradation concerns
+
+### Final Summary Table
+
+| Metric | Budget (6x20m) | Capability (6x30m) |
+|---|---|---|
+| Fleet cost (OOA) | $4.5M | $8.4M |
+| Winter payload | 509 W | 1,420 W |
+| Summer payload | 1,781 W | 4,183 W |
+| Per aircraft mass | 58 kg | 120 kg |
+| Fleet mass | 347 kg | 720 kg |
+| Chord | 1.25 m | 1.50 m |
+| AR | 16 | 20 |
+| Reynolds number | 208k | 250k |
+| $/kg payload (OOA) | - | $118k |
