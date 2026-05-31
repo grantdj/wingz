@@ -27,29 +27,41 @@ extreme-span wings. Control complexity replaces structural complexity.
 
 ## Running the Analysis
 
-### Full parameter sweep
+### Regenerate all plots
 
 ```bash
-python scripts/sweep_single_vs_formation.py        # interactive plots
-python scripts/sweep_single_vs_formation.py --save  # save to docs/
+./scripts/run_all.sh          # run all scripts, save plots to docs/
+./scripts/run_all.sh --quick  # skip slow sweeps (formation_scaling, span_chord)
 ```
 
-### Sensitivity analysis
+### Individual scripts
 
-```bash
-python scripts/sensitivity_analysis.py        # interactive
-python scripts/sensitivity_analysis.py --save # save to docs/
-```
+| Script | What it does |
+|---|---|
+| `converged_sweep.py` | Full converged analysis across 11 configs at max payload |
+| `energy_timeline.py` | 24h solar/battery/waste cycle for key configs |
+| `cost_comparison.py` | Cost vs payload sweep with realistic pricing |
+| `climb_profile.py` | Launch-to-altitude simulation (48h) |
+| `formation_drag_analysis.py` | Drag per slot, effective span, overlap, geometry |
+| `formation_scaling.py` | $/kg payload vs fleet size N=1-12 |
+| `span_chord_sweep.py` | Span × chord heatmaps for $/kg and payload mass |
+| `sweep_single_vs_formation.py` | Legacy parameter sweep (old engine) |
+| `sensitivity_analysis.py` | Legacy sensitivity analysis (old engine) |
+
+All scripts accept `--save` to write plots to `docs/formation_flight/`.
+All use the shared solver (`wingz/evaluation/solver.py`) and constants
+(`wingz/constants.py`) — no duplicated physics.
 
 ## Package Structure
 
-- `wingz/structures/` — wing mass scaling models
-- `wingz/aerodynamics/` — drag models including formation effects
+- `wingz/constants.py` — single source of truth for all design constants
+- `wingz/structures/` — wing mass scaling (empirical + beam model)
+- `wingz/aerodynamics/` — drag models including formation wake effects
 - `wingz/solar/` — solar power and energy balance
 - `wingz/control/` — formation architectures and station-keeping
-- `wingz/cost/` — mass-proxy and bottom-up cost models
-- `wingz/mission/` — mission profile definitions, atmosphere model (`atmosphere.py`), payload model (`payload.py`)
-- `wingz/evaluation/` — parameter sweeps and Pareto analysis
+- `wingz/cost/` — mass-proxy and bottom-up cost models with manufacturing capital
+- `wingz/mission/` — mission profiles, atmosphere model, payload model
+- `wingz/evaluation/` — sweep engine, shared solver, Pareto analysis
 - `wingz/visualization/` — matplotlib plotting
 
 ## Key Design Insights
