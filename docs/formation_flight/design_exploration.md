@@ -369,6 +369,133 @@ than Zephyr per unit of payload delivered. Key advantages over all
 alternatives: no launch costs, relocatable, payload-swappable,
 graceful degradation.
 
+## Sensitivity Analysis: Which Knobs Matter Most
+
+Baseline: 6x20m AR=16, winter solstice at 30°N, 500W payload.
+
+Each parameter improved by 10% independently; impact measured as additional
+payload power the fleet can carry while still closing the 24h energy balance.
+
+### Ranked Impact of 10% Improvement
+
+| Knob | Baseline | +10% value | Payload gain | Why it matters |
+|---|---|---|---|---|
+| **Panel efficiency** | 0.38 | 0.418 | **+562 W** | Directly increases solar collection. Biggest lever by far. |
+| Propulsion efficiency | 0.75 | 0.825 | +383 W | Every watt saved in thrust is a watt for payload |
+| Cd0 (zero-lift drag) | 0.025 | 0.0225 | +281 W | Less drag → less thrust → less power needed |
+| Battery Wh/kg | 250 | 275 | +79 W | Less battery mass → lighter aircraft → less drag |
+| Night stall margin | 1.03 | 0.927 | +42 W | Slower at night → less power for night cruise |
+| Structural mass | — | -10% | +15 W | Structure is only 13% of mass — small lever |
+
+**Key insight:** Panel efficiency is 7× more impactful than battery Wh/kg.
+A 10% better panel buys +562W; a 10% better battery buys only +79W.
+This is because battery mass (75% of aircraft) is set by the night energy
+requirement — making it lighter saves mass but the cascade through
+drag → power → battery is weak (feedback gain < 1.0).
+
+Propulsion efficiency is the second-biggest lever. A better propeller
+or motor saves power on both day and night cruise — compound benefit.
+
+### Battery Technology Roadmap (Specific Products)
+
+| Product | Wh/kg | Cycle life | $/kWh | Status | Year-long? |
+|---|---|---|---|---|---|
+| Standard Li-ion (NMC) | 250 | 500 @ 100% DOD | $3,000 | Baseline | Yes, with derating to 175 eff |
+| **Amprius SiCore** | 370 | 500 | $4,000 | **Shipping now** | Yes — same cycle life as Li-ion |
+| **Ganfeng solid-state** | 400 | 1,100 | $2,500 | **2026 production** | **Best option** — 3yr life, cold-tolerant |
+| Amprius SiMaxx | 450 | 200 | $5,000 | Shipping now | No — dies in ~6 months at daily cycling |
+| Solid-state (target) | 500 | 1,500 | $2,000 | 2028 target | Ideal — cold-tolerant, 4yr life |
+
+**Amprius SiCore (available today):** 48% improvement over baseline Li-ion.
+Saves 14 kg/aircraft and adds 281W payload capacity. Same 500-cycle life.
+Drop-in replacement for current Li-ion packs.
+
+**Ganfeng solid-state (2026):** The clear production winner. 400 Wh/kg saves
+16 kg/aircraft and adds 325W payload. 1,100 cycle life means batteries last
+~3 years instead of 1.4 years — cutting annual battery replacement cost by
+60%. Cold-tolerant (-30°C to +80°C) eliminates battery heating subsystem.
+
+**Amprius SiMaxx:** Highest energy density shipping today (450 Wh/kg) but
+only 200 cycles — dies in ~6 months of daily cycling. Not viable for
+year-long missions unless battery swap rotation is used.
+
+### Combined Impact: Best Near-Term Upgrades
+
+Starting from baseline 6x20m AR=16 (509W winter payload):
+
+| Upgrade | New payload | Improvement |
+|---|---|---|
+| Amprius SiCore batteries (370 Wh/kg) | ~790 W | +55% |
+| + OOA propeller (η_prop 0.85 → 0.88) | ~970 W | +90% |
+| Ganfeng solid-state (2028, 400 Wh/kg) | ~834 W | +64% |
+| + III-V panels (0.38 → 0.42) | ~1,400 W | +175% |
+
+The highest-leverage development path is: better panels > better propulsion >
+better batteries > lower drag > lighter structure.
+
+## Vehicle Mass Breakdown (MTOW)
+
+All configurations at AR=16, max payload, summer solstice at 30°N.
+MTOW = maximum takeoff weight per aircraft. All masses in kg.
+
+### Singles
+
+| Config | Chord | MTOW/ac | Struct | Battery | Solar | Hw | Payload/ac | Fleet MTOW | Payload tot |
+|---|---|---|---|---|---|---|---|---|---|
+| 1×20m | 1.25m | 43 | 7.7 | 24.1 | 7.0 | 2.5 | 1.8 | 43 | 1.8 |
+| 1×25m | 1.56m | 70 | 12.1 | 39.5 | 11.4 | 2.5 | 4.1 | 70 | 4.1 |
+| 1×30m | 1.88m | 102 | 17.5 | 58.1 | 16.7 | 2.5 | 7.2 | 102 | 7.2 |
+| 1×40m | 2.50m | 188 | 31.6 | 107.3 | 30.4 | 2.5 | 16.0 | 188 | 16.0 |
+| 1×50m | 3.12m | 300 | 50.1 | 171.5 | 48.1 | 2.5 | 27.8 | 300 | 27.8 |
+| 1×60m | 3.75m | 424 | 72.9 | 241.1 | 67.7 | 2.5 | 40.1 | 424 | 40.1 |
+
+### Pairs (N=2)
+
+| Config | Chord | MTOW/ac | Struct | Battery | Solar | Hw | Payload/ac | Fleet MTOW | Payload tot |
+|---|---|---|---|---|---|---|---|---|---|
+| 2×15m | 0.94m | 25 | 4.3 | 13.9 | 4.2 | 2.5 | 0.6 | 51 | 1.2 |
+| 2×20m | 1.25m | 82 | 7.8 | 56.2 | 11.2 | 2.5 | 3.7 | 163 | 7.4 |
+| 2×25m | 1.56m | 131 | 12.4 | 90.9 | 17.6 | 2.5 | 7.7 | 262 | 15.4 |
+| 2×30m | 1.88m | 194 | 18.1 | 134.6 | 25.3 | 2.5 | 13.2 | 387 | 26.4 |
+| 2×40m | 2.50m | 361 | 33.1 | 251.4 | 45.0 | 2.5 | 29.2 | 722 | 58.4 |
+
+### Formations (N=3, 4, 6)
+
+| Config | Chord | MTOW/ac | Struct | Battery | Solar | Hw | Payload/ac | Fleet MTOW | Payload tot |
+|---|---|---|---|---|---|---|---|---|---|
+| 3×15m | 0.94m | 44 | 4.4 | 29.8 | 6.3 | 2.5 | 1.0 | 132 | 3.0 |
+| 3×20m | 1.25m | 87 | 7.9 | 60.9 | 11.2 | 2.5 | 4.7 | 261 | 14.1 |
+| 3×25m | 1.56m | 140 | 12.5 | 97.9 | 17.6 | 2.5 | 9.4 | 419 | 28.1 |
+| 3×30m | 1.88m | 207 | 18.2 | 145.1 | 25.3 | 2.5 | 15.7 | 620 | 47.2 |
+| 4×15m | 0.94m | 50 | 4.4 | 34.6 | 6.3 | 2.5 | 1.8 | 198 | 7.3 |
+| 4×20m | 1.25m | 96 | 7.9 | 68.3 | 11.2 | 2.5 | 6.4 | 385 | 25.8 |
+| 4×25m | 1.56m | 155 | 12.5 | 110.1 | 17.6 | 2.5 | 12.3 | 620 | 49.3 |
+| 4×30m | 1.88m | 230 | 18.3 | 163.6 | 25.3 | 2.5 | 20.4 | 920 | 81.4 |
+| **6×15m** | 0.94m | 55 | 4.4 | 38.8 | 6.3 | 2.5 | 2.8 | 329 | 16.9 |
+| **6×20m** | 1.25m | **107** | 8.0 | 77.0 | 11.2 | 2.5 | 8.6 | **644** | 51.6 |
+| **6×25m** | 1.56m | **174** | 12.6 | 124.8 | 17.6 | 2.5 | 16.0 | **1,041** | 96.2 |
+| **6×30m** | 1.88m | **259** | 18.5 | 186.2 | 25.3 | 2.5 | 26.2 | **1,552** | 156.9 |
+
+### Mass Breakdown Observations
+
+- **Battery dominates:** 56–72% of MTOW across all configurations.
+  Structure is only 7–17%. This is why battery Wh/kg matters less than
+  expected — battery mass is set by the night energy requirement, not by
+  the mass spiral.
+- **MTOW scales as ~span²:** Doubling span roughly quadruples mass
+  (wing area quadruples → more solar panel mass, more power needed, more battery).
+- **Formation aircraft are heavier per unit** than singles at the same span
+  because they carry more payload — the formation drag reduction creates
+  surplus energy that gets allocated to payload.
+- **The 6×20m baseline at 107 kg/ac** is comparable to Zephyr S (~75 kg)
+  but carries 8.6 kg payload per aircraft vs Zephyr's ~5 kg.
+- **Fleet mass vs single:** A 1×60m single weighs 424 kg and carries 40 kg
+  payload. A 6×20m fleet weighs 644 kg (52% more) but carries 52 kg
+  payload (29% more) — and costs far less due to smaller tooling and
+  solar panel area.
+- **Hardware mass (2.5 kg/ac)** is negligible at all scales. The control
+  complexity trade (structural → control) adds almost no mass.
+
 ### Investigation Summary
 
 After 4 iterations of research and modeling:
@@ -389,5 +516,12 @@ competitive with satellites and dramatically cheaper than single HALE platforms.
 - Leader rotation: every 30-60 minutes (already modeled)
 - Design point: winter solstice at operating latitude
 
-**Biggest future lever:** Solid-state batteries (2028, 400 Wh/kg) would
-increase winter payload by ~50% and eliminate cold-weather concerns.
+**Biggest levers (sensitivity-ranked):**
+1. Panel efficiency (7× more impactful than battery Wh/kg)
+2. Propulsion efficiency (5× more than battery)
+3. Cd0 reduction (3.5× more than battery)
+4. Battery Wh/kg (important but not dominant)
+
+**Near-term battery:** Amprius SiCore (370 Wh/kg, shipping now) adds +55%
+winter payload. Ganfeng solid-state (400 Wh/kg, 2026) adds +64% and
+eliminates cold/degradation concerns with 1,100-cycle life.
