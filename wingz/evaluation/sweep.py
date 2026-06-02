@@ -42,7 +42,7 @@ from wingz.solar.energy_balance import (
 from wingz.structures.empirical import EmpiricalStructure, SOLAR_HALE_DATA
 
 
-from wingz.constants import CL_MAX
+from wingz.constants import CL_MAX, PANEL_EFFICIENCY, PANEL_AREAL_DENSITY
 
 
 class PositionStrategy(enum.Enum):
@@ -76,7 +76,8 @@ def evaluate_config(
     day_of_year: int = 172,
     solar_margin: float = 3.0,       # panel area sized to produce margin × required energy
     max_panel_coverage: float = 0.90,  # can't panel more than 90% of wing
-    panel_efficiency: float = 0.38,  # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
+    panel_efficiency: float = PANEL_EFFICIENCY,
+    panel_areal_density: float = PANEL_AREAL_DENSITY,
     propulsion_efficiency: float = 0.75,  # combined prop × motor × ESC
     stall_margin_day: float = 1.15,   # V_cruise / V_stall during day
     stall_margin_night: float = 1.03,  # V_cruise / V_stall at night (calm stratosphere)
@@ -137,10 +138,13 @@ def evaluate_config(
     else:
         struct_mass_each = structure.wing_mass(span, config.aspect_ratio)
 
+    # Panel mass: starts at zero, updated each iteration once coverage is known
+    panel_mass_each = 0.0
+
     for iteration in range(max_iterations):
-        # Total mass per aircraft
+        # Total mass per aircraft (includes panel mass)
         batt_each = battery_mass_total / N
-        total_mass_per = [struct_mass_each + hw + payload_mass_each + batt_each
+        total_mass_per = [struct_mass_each + hw + payload_mass_each + batt_each + panel_mass_each
                           for hw in hw_masses]
 
         # Weight distribution
@@ -276,6 +280,9 @@ def evaluate_config(
             night_hours=energy_result.night_hours,
         )
 
+        # Panel mass: scales with actual panel area (coverage × wing area)
+        new_panel_mass_each = panel_coverage * wing_area_each * panel_areal_density
+
         # Update structural mass from beam model (sized to actual loaded weight)
         if use_beam:
             # Each aircraft's structure must carry its own loaded weight
@@ -284,11 +291,12 @@ def evaluate_config(
         else:
             new_struct = struct_mass_each  # empirical, doesn't change
 
-        # Check convergence (both battery and structure must settle)
+        # Check convergence (battery, structure, and panel mass must settle)
         batt_converged = abs(new_battery_mass - battery_mass_total) < 0.1
         struct_converged = abs(new_struct - struct_mass_each) < 0.1
+        panel_converged = abs(new_panel_mass_each - panel_mass_each) < 0.05
 
-        if batt_converged and struct_converged:
+        if batt_converged and struct_converged and panel_converged:
             break
 
         # Detect divergence: if mass is growing without bound, stop
@@ -301,6 +309,7 @@ def evaluate_config(
         # Damped update for stability
         battery_mass_total = 0.6 * battery_mass_total + 0.4 * new_battery_mass
         struct_mass_each = 0.6 * struct_mass_each + 0.4 * new_struct
+        panel_mass_each = 0.6 * panel_mass_each + 0.4 * new_panel_mass_each
 
     # Final values
     control_mass_total = sum(hm_ordered)
@@ -339,6 +348,8 @@ def evaluate_config(
         "control_mass_total_kg": control_mass_total,
         "payload_mass_kg": config.payload.mass_kg,
         "payload_power_W": config.payload.power_W,
+        "panel_mass_each_kg": panel_mass_each,
+        "panel_mass_total_kg": N * panel_mass_each,
         "battery_mass_kg": battery_mass_total,
         "total_mass_kg": total_fleet_mass,
         "total_mass_with_battery_kg": total_fleet_mass,  # battery already included

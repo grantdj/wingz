@@ -19,7 +19,7 @@ from typing import Optional
 from wingz.constants import (
     GRAVITY, CL_MAX, OSWALD_E, CD0,
     STALL_MARGIN_DAY, STALL_MARGIN_NIGHT,
-    PANEL_EFFICIENCY, SOLAR_CONSTANT,
+    PANEL_EFFICIENCY, PANEL_AREAL_DENSITY, SOLAR_CONSTANT,
     SOLAR_POWER_MARGIN, MAX_PANEL_COVERAGE,
     BATTERY_ENERGY_DENSITY, PROPULSION_EFFICIENCY,
     PAYLOAD_SPECIFIC_MASS, CLIMB_POWER_FRACTION,
@@ -175,9 +175,10 @@ def solve_converged(
 
     struct_each = 5.0
     batt_each = 5.0
+    panel_mass_each = 0.0
 
     for i in range(max_iter):
-        ac = struct_each + hw + pld_mass_each + batt_each
+        ac = struct_each + hw + pld_mass_each + batt_each + panel_mass_each
         W = ac * GRAVITY
 
         # Re-adjusted CL_max based on chord and expected cruise speed
@@ -201,13 +202,18 @@ def solve_converged(
         if not np.isfinite(new_batt) or not np.isfinite(new_struct) or new_batt > 1e5:
             return None
 
-        if abs(new_batt - batt_each) < 0.05 and abs(new_struct - struct_each) < 0.05 and i > 0:
-            # Panel coverage sized to 3× power requirement (not fixed 80%)
-            daily_energy_Wh = P_day * 24
-            panel_cov = compute_panel_coverage(
-                daily_energy_Wh, total_area,
-                alt_m=CRUISE_ALTITUDE_M, lat_deg=lat_deg, doy=doy,
-            )
+        # Update panel mass from coverage
+        daily_energy_Wh = P_day * 24
+        panel_cov = compute_panel_coverage(
+            daily_energy_Wh, total_area,
+            alt_m=CRUISE_ALTITUDE_M, lat_deg=lat_deg, doy=doy,
+        )
+        new_panel_mass = panel_cov * area_each * PANEL_AREAL_DENSITY
+
+        if (abs(new_batt - batt_each) < 0.05
+                and abs(new_struct - struct_each) < 0.05
+                and abs(new_panel_mass - panel_mass_each) < 0.05
+                and i > 0):
             panel_area = total_area * panel_cov
 
             avail = panel_area * PANEL_EFFICIENCY * avg_irr * day_h
@@ -227,6 +233,7 @@ def solve_converged(
                 "N": N, "span": span, "AR": AR,
                 "chord": span / AR, "area_each": area_each,
                 "panel_coverage": panel_cov, "panel_area_m2": panel_area,
+                "panel_mass_each": panel_mass_each,
                 "struct_each": new_struct, "batt_each": new_batt,
                 "ac_mass": ac, "fleet_mass": N * ac,
                 "V_stall": V_stall, "V_day": V_day, "V_night": V_night,
@@ -244,6 +251,7 @@ def solve_converged(
 
         batt_each = 0.7 * batt_each + 0.3 * new_batt
         struct_each = 0.7 * struct_each + 0.3 * new_struct
+        panel_mass_each = 0.7 * panel_mass_each + 0.3 * new_panel_mass
 
     return None
 

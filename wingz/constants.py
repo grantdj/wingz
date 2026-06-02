@@ -55,12 +55,13 @@ STALL_MARGIN_NIGHT = 1.03         # V_cruise / V_stall at night (calm stratosphe
 #   Unlock range: day 1.05–1.30, night 1.01–1.15
 
 # ── Solar ─────────────────────────────────────────────────────────────────
-PANEL_EFFICIENCY = 0.38           # MicroLink III-V ELO, flight-proven on Zephyr/PHASA-35
-#   Si (old): 0.20–0.25
-#   GaAs single-junction: 0.29
-#   III-V multi-junction (current): 0.35–0.40
-#   III-V (near-term): 0.40–0.45
-#   Unlock range: 0.20–0.45
+PANEL_EFFICIENCY = 0.30           # MicroLink III-V ELO production (28-31%), Zephyr/PHASA-35
+#   Si (SunPower Maxeon, Skydweller): 0.22–0.24
+#   GaAs single-junction (Alta, defunct): 0.26–0.29
+#   III-V triple-junction production: 0.28–0.31
+#   III-V triple-junction lab record: 0.3775 (MicroLink, 2018)
+#   Perovskite/III-V tandem (future): 0.33–0.35
+#   Unlock range: 0.22–0.38
 
 SOLAR_POWER_MARGIN = 3.0         # panel area sized to produce margin × total power required
 #   Replaces fixed PANEL_COVERAGE. Coverage is computed as:
@@ -71,6 +72,13 @@ SOLAR_POWER_MARGIN = 3.0         # panel area sized to produce margin × total p
 MAX_PANEL_COVERAGE = 0.90        # maximum fraction of wing that can have panels
 #   Limited by: ailerons, spar caps, structural joints, wing root
 #   Flying wing: up to 0.92. Boom-tail: ~0.85–0.90. Conventional: ~0.80.
+
+PANEL_AREAL_DENSITY = 0.5        # kg/m², installed III-V ELO solar panel
+#   MicroLink cell: ~0.15 kg/m² (bare cell, >3000 W/kg)
+#   Encapsulation + wiring + interconnects: ~0.2 kg/m²
+#   Mounting/bonding to wing skin: ~0.15 kg/m²
+#   Total installed: ~0.5 kg/m² (~1500 W/kg at panel level)
+#   Unlock range: 0.3–0.8
 
 # ── Propulsion ────────────────────────────────────────────────────────────
 PROPULSION_EFFICIENCY = 0.75      # combined propeller × motor × ESC efficiency

@@ -8,8 +8,8 @@ Prices are based on 2024-2026 aerospace market data:
 
 Solar cells:
     III-V multi-junction ELO (MicroLink): $50-300/W depending on volume.
-    At 38% efficiency and ~300 W/m² at altitude, that's $15,000-$90,000/m².
-    We use $100/W as a mid-volume estimate ($30,000/m²).
+    At 30% production efficiency and ~240 W/m² at altitude, that's
+    $12,000-$72,000/m². We use $100/W mid-volume ($24,000/m²).
     Source: MicroLink IARPA SOLSTICE presentation (2024), NREL III-V roadmap.
 
 Carbon fiber composite:
@@ -55,7 +55,7 @@ class MaterialPrices:
 
     # Solar
     solar_cell_per_W: float = 100.0            # $/W, III-V ELO at mid-volume
-    solar_W_per_m2: float = 300.0              # W/m² at altitude (38% eff * ~800 W/m² avg)
+    solar_W_per_m2: float = 240.0              # W/m² at altitude (30% eff * ~800 W/m² avg)
 
     # Batteries
     battery_pack_per_kWh: float = 3000.0       # $/kWh, aerospace-qualified pack
