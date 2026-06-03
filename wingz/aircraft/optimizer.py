@@ -40,6 +40,7 @@ from wingz.constants import (
     PANEL_EFFICIENCY, PANEL_AREAL_DENSITY, AIRFOIL_THICKNESS_RATIO,
     BATTERY_ENERGY_DENSITY, CL_MAX, GRAVITY, RHO_20KM, CFRP_DENSITY,
 )
+from wingz.cost.materials import fleet_cost, MaterialPrices
 
 
 @dataclass
@@ -59,6 +60,16 @@ class OptimizationConfig:
     stall_margin_night: float = 1.03
     battery_density: float = BATTERY_ENERGY_DENSITY
     t_c: float = AIRFOIL_THICKNESS_RATIO
+
+    # Formation requirements
+    formation_N: int = 6              # fleet size for cost + controllability
+    formation_tolerance_m: float = 2.0  # station-keeping tolerance
+    gust_speed_ms: float = 3.0        # max expected gust (stratospheric gravity waves)
+    require_formation: bool = True     # enforce yaw authority for formation flying
+
+    # Cost weighting
+    cost_weight: float = 0.001         # $/kg equivalent (0 = mass only, 0.001 = light cost)
+    production_run: int = 10           # fleets for capital amortization
 
     # Optimizer settings
     maxiter: int = 2000
@@ -88,8 +99,10 @@ class AircraftResult:
     feasible: bool
     aero: dict
     structure: dict
-    config_type: str  # human-readable description of what the optimizer found
-    objective: float  # raw objective value
+    unit_cost_usd: float
+    fleet_cost_usd: float
+    config_type: str
+    objective: float
 
 
 def classify_config(geo: AircraftGeometry) -> str:
@@ -197,6 +210,18 @@ def _evaluate_detailed(geo: AircraftGeometry, opt: 'OptimizationConfig') -> dict
     total_mass = structural_mass + non_wing + battery_mass + panel_mass + opt.payload.mass_kg + 0.4
     struct = aircraft_structural_mass(geo, total_mass, t_c)
 
+    # Cost
+    N = opt.formation_N
+    battery_kWh = battery_mass * opt.battery_density / 1000.0
+    panel_area = panel_coverage * solar_area
+    cost = fleet_cost(
+        N=N, structural_mass_kg=(structural_mass + non_wing) * N,
+        solar_panel_area_m2=panel_area * N,
+        battery_capacity_kWh=battery_kWh * N,
+        span_m=geo.span, n_full_nav=1, n_basic_nav=N - 1,
+        production_run=opt.production_run,
+    )
+
     return {
         'total_mass': total_mass,
         'structural_mass': structural_mass + non_wing,
@@ -210,6 +235,8 @@ def _evaluate_detailed(geo: AircraftGeometry, opt: 'OptimizationConfig') -> dict
         'energy_closes': energy_result.closes if energy_result else False,
         'feasible': struct['wing_feasible'] and (energy_result.closes if energy_result else False),
         'aero': aero,
+        'unit_cost': cost.total / N,
+        'fleet_cost': cost.total,
         'struct': struct,
     }
 
@@ -374,6 +401,22 @@ def _evaluate_aircraft_inner(x: np.ndarray, opt: OptimizationConfig) -> float:
     # Check tube spar feasibility at the converged total_mass
     struct_result = aircraft_structural_mass(geo, total_mass, t_c)
 
+    # ── Cost ─────────────────────────────────────────────────────
+    N = opt.formation_N
+    battery_kWh = battery_mass * opt.battery_density / 1000.0
+    panel_area = panel_coverage * solar_area
+    cost = fleet_cost(
+        N=N,
+        structural_mass_kg=(structural_mass + non_wing_struct) * N,
+        solar_panel_area_m2=panel_area * N,
+        battery_capacity_kWh=battery_kWh * N,
+        span_m=geo.span,
+        n_full_nav=1,
+        n_basic_nav=N - 1,
+        production_run=opt.production_run,
+    )
+    unit_cost = cost.total / N
+
     # ── Penalties ────────────────────────────────────────────────
     penalty = 0.0
 
@@ -403,11 +446,61 @@ def _evaluate_aircraft_inner(x: np.ndarray, opt: OptimizationConfig) -> float:
     if not geo.has_tail and abs(geo.sweep_deg) < 5:
         penalty += (5 - abs(geo.sweep_deg)) * 20
 
+    # Formation controllability: yaw authority check
+    # A flying wing relies on differential drag or split elevons for yaw.
+    # In formation, you need yaw corrections within ~0.5s to hold 2m tolerance.
+    # Require either: (a) a tail with a rudder, or (b) adequate yaw moment
+    # from differential drag on a swept wing.
+    if opt.require_formation:
+        v_cruise = v_day  # from the converged energy loop above
+
+        if not geo.has_tail:
+            # Flying wing yaw authority from differential drag on swept wing.
+            # Yaw moment ∝ sweep × span × dynamic_pressure. Need enough to
+            # counter gust-induced sideslip within tolerance.
+            # Gust yaw perturbation: β ≈ v_gust / v_cruise (rad)
+            gust_beta = opt.gust_speed_ms / max(v_cruise, 5.0)
+
+            # Available yaw moment from split elevon (differential drag)
+            # on a swept wing: N_avail ∝ CD_split × q × S_elevon × y_cp × sin(sweep)
+            elevon_frac = 0.15  # fraction of wing area
+            y_cp = geo.half_span * 0.6  # elevon center of pressure
+            sweep_rad = np.radians(abs(geo.sweep_deg))
+            q_cruise = 0.5 * rho * v_cruise**2
+            N_avail = 0.3 * q_cruise * wing_area * elevon_frac * y_cp * np.sin(sweep_rad)
+
+            # Required yaw moment to correct gust within tolerance
+            # N_req = I_zz × β / Δt, where I_zz ≈ m × (span/4)² and Δt ≈ 1s
+            I_zz = total_mass * (geo.span / 4)**2
+            N_req = I_zz * gust_beta / 1.0  # 1 second correction time
+
+            yaw_margin = N_avail / max(N_req, 0.01) - 1.0
+            if yaw_margin < 0:
+                penalty += abs(yaw_margin) * 50
+
+        # Gust tolerance: aircraft must survive gust without exceeding
+        # formation tolerance. Wing loading affects gust response.
+        # Higher wing loading = less gust sensitivity.
+        wing_loading = total_mass * GRAVITY / wing_area  # N/m²
+        # Gust alleviation factor: Δn ≈ ρ × V × Δw × CLα / (2 × W/S)
+        CL_alpha = 2 * np.pi * geo.aspect_ratio / (geo.aspect_ratio + 2)  # per rad
+        delta_n = rho * v_cruise * opt.gust_speed_ms * CL_alpha / (2 * wing_loading)
+        # Lateral displacement from gust: Δy ≈ v_gust × t_response
+        # t_response depends on roll damping. Low AR = faster roll response.
+        t_response = 0.5 + 0.02 * geo.aspect_ratio  # seconds, AR penalty
+        delta_y = opt.gust_speed_ms * t_response
+        if delta_y > opt.formation_tolerance_m:
+            penalty += (delta_y - opt.formation_tolerance_m) * 30
+
     # Mass sanity
     if total_mass > 500 or total_mass < 2:
         penalty += 1000
 
-    return total_mass + penalty
+    # Objective: MTOW + cost contribution
+    # cost_weight converts $/aircraft to equivalent kg for the optimizer
+    objective = total_mass + opt.cost_weight * unit_cost + penalty
+
+    return objective
 
 
 def _seed_population(bounds: list, opt: OptimizationConfig, popsize: int) -> np.ndarray:
@@ -571,6 +664,8 @@ def optimize_aircraft(opt: OptimizationConfig,
         feasible=detail['feasible'],
         aero=detail['aero'],
         structure=detail['struct'],
+        unit_cost_usd=detail['unit_cost'],
+        fleet_cost_usd=detail['fleet_cost'],
         config_type=classify_config(geo),
         objective=result.fun,
     )

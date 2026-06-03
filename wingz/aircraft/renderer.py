@@ -464,6 +464,9 @@ def render_aircraft(result: AircraftResult, save: str | None = None,
         f"{'Tip deflection:':<22s} {result.structure['tip_deflection_pct']:.1f}%",
         "",
         f"{'Feasible:':<22s} {'YES' if result.feasible else 'NO'}",
+        "",
+        f"{'Unit cost:':<22s} ${result.unit_cost_usd:,.0f}",
+        f"{'Fleet cost:':<22s} ${result.fleet_cost_usd:,.0f}",
     ]
 
     # Fuselage / tail details

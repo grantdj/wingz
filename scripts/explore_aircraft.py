@@ -35,6 +35,10 @@ def main():
     parser.add_argument('--payload-length', type=float, default=0.4, help="Payload bay length (m)")
     parser.add_argument('--payload-diameter', type=float, default=0.15, help="Payload bay diameter (m)")
     parser.add_argument('--latitude', type=float, default=30.0, help="Operating latitude (deg)")
+    parser.add_argument('--cost-weight', type=float, default=0.001, help="Cost weight in objective ($/kg equiv)")
+    parser.add_argument('--formation-n', type=int, default=6, help="Formation fleet size")
+    parser.add_argument('--production-run', type=int, default=10, help="Production run for cost amort")
+    parser.add_argument('--no-formation', action='store_true', help="Disable formation controllability req")
     parser.add_argument('--save', type=str, default=None, help="Save prefix for output files")
     parser.add_argument('--no-render', action='store_true', help="Skip rendering")
     args = parser.parse_args()
@@ -56,6 +60,10 @@ def main():
         maxiter=args.maxiter,
         popsize=args.popsize,
         workers=args.workers,
+        cost_weight=args.cost_weight,
+        formation_N=args.formation_n,
+        production_run=args.production_run,
+        require_formation=not args.no_formation,
     )
 
     print("=" * 70)
@@ -102,6 +110,8 @@ def main():
         print(f"  Structure:  {res.structural_mass_kg:.1f} kg")
         print(f"  Battery:    {res.battery_mass_kg:.1f} kg")
         print(f"  Panels:     {res.panel_mass_kg:.1f} kg")
+        print(f"  Unit cost:  ${res.unit_cost_usd:,.0f}")
+        print(f"  Fleet cost: ${res.fleet_cost_usd:,.0f} ({args.formation_n} aircraft)")
         print(f"  Feasible:   {'YES' if res.feasible else 'NO'}")
         if geo.has_tail:
             print(f"  Tail:       boom={geo.boom_length:.1f}m, "
