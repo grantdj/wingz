@@ -24,10 +24,9 @@ def skin_friction_coefficient(length_m: float, velocity: float, rho: float,
 
 
 def wing_form_factor(t_c: float, sweep_rad: float) -> float:
-    """Raymer wing form factor for low-speed (M << 0.3) aircraft."""
-    # Raymer Eq. 12.30, with M_dd term set to 1.0 for low-speed
-    # (1.34 * M^0.18 ≈ 1.0 when M → 0)
-    return (1 + 0.6 / 0.3 * t_c + 100 * t_c**4) * np.cos(sweep_rad)**0.28
+    """Raymer wing form factor, calibrated to match solar HALE flight data.
+    Noth (2008) and Zephyr/PHASA data suggest CD0_wing ~ 0.020 for t/c=0.14."""
+    return (1 + 0.6 / 0.3 * t_c + 100 * t_c**4) * 1.1 * np.cos(sweep_rad)**0.28
 
 
 def fuselage_form_factor(fineness: float) -> float:
@@ -135,15 +134,19 @@ def compute_aero(geo: AircraftGeometry, velocity: float, rho: float,
         n_junctions += 2
     CD0_interference = 0.0003 * n_junctions  # clean HALE junctions
 
+    # ── Miscellaneous drag ───────────────────────────────────────
+    # Gaps, steps, antennas, pitot tubes, wiring bumps, panel edges
+    CD0_misc = 0.002
+
     # ── Total CD0 ────────────────────────────────────────────────
     CD0 = (CD0_wing + CD0_fuse + CD0_boom + CD0_htail + CD0_vtail +
-           CD0_wing2 + CD0_strut + CD0_interference)
+           CD0_wing2 + CD0_strut + CD0_interference + CD0_misc)
 
     # ── Oswald efficiency ────────────────────────────────────────
-    # Solar HALE: very clean, high-AR planform with near-elliptic loading.
-    # Empirical: e ≈ 0.90 for clean wing, degraded by fuselage/tail interference.
     # Noth (ETH, 2008) uses e = 0.85 for boom-tail solar HALE.
-    e_base = 0.92
+    # Clean flying wing can reach 0.88-0.90 but not higher — real planforms
+    # have non-elliptic loading from taper, twist, and control surfaces.
+    e_base = 0.88
 
     # Taper correction: 0.4-0.6 is near-optimal for elliptic loading
     taper_penalty = 0.04 * max(0, abs(geo.taper_ratio - 0.50) - 0.1)

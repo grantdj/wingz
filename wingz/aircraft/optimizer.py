@@ -33,6 +33,7 @@ from wingz.aircraft.geometry import (
 )
 from wingz.aircraft.aero import compute_aero
 from wingz.aircraft.structures import aircraft_structural_mass
+from wingz.aerodynamics.formation_aero import per_slot_drag_factor, FormationGeometry
 from wingz.solar.energy_balance import (
     compute_energy_balance, required_battery_mass, required_coverage_fraction,
 )
@@ -181,11 +182,20 @@ def _evaluate_detailed(geo: AircraftGeometry, opt: 'OptimizationConfig') -> dict
         if q_day <= 0 or aero['oswald_e'] <= 0:
             break
         D_day = weight**2 / (q_day * np.pi * aero['oswald_e'] * geo.span**2) + q_day * wing_area * aero['CD0']
-        q_night = 0.5 * rho * v_night**2
-        D_night = weight**2 / (q_night * np.pi * aero['oswald_e'] * geo.span**2) + q_night * wing_area * aero['CD0']
 
-        P_day = D_day * v_day / opt.propulsion_efficiency + 15.0 + 10.0 + opt.payload.power_W
-        P_night = D_night * v_night / opt.propulsion_efficiency + 15.0 + 10.0 + opt.payload.power_W
+        q_night = 0.5 * rho * v_night**2
+        N = opt.formation_N
+        if N > 1:
+            drag_factors = per_slot_drag_factor(N, geo.span, 0.1, FormationGeometry.ECHELON)
+            avg_drag_factor = sum(drag_factors) / N
+        else:
+            avg_drag_factor = 1.0
+        D_night = (avg_drag_factor * weight**2 / (q_night * np.pi * aero['oswald_e'] * geo.span**2) +
+                   q_night * wing_area * aero['CD0'])
+
+        hw_power = 15.0 + 10.0 + opt.payload.power_W
+        P_day = D_day * v_day / opt.propulsion_efficiency + hw_power
+        P_night = D_night * v_night / opt.propulsion_efficiency + hw_power
 
         energy_24h = P_day * 13.9 + P_night * 10.1
         panel_coverage = required_coverage_fraction(
@@ -331,23 +341,38 @@ def _evaluate_aircraft_inner(x: np.ndarray, opt: OptimizationConfig) -> float:
         q_day = 0.5 * rho * v_day**2
         if q_day <= 0 or oswald_e <= 0:
             return 5000.0
-        D_induced = weight**2 / (q_day * np.pi * oswald_e * geo.span**2)
-        D_parasite = q_day * wing_area * CD0
-        D_total = D_induced + D_parasite
+
+        # Day: solo flight (no formation benefit)
+        D_induced_day = weight**2 / (q_day * np.pi * oswald_e * geo.span**2)
+        D_parasite_day = q_day * wing_area * CD0
+        D_total = D_induced_day + D_parasite_day
         if not np.isfinite(D_total) or D_total <= 0:
             return 5000.0
 
+        # Night: formation flight with wake surfing drag reduction
         q_night = 0.5 * rho * v_night**2
         if q_night <= 0:
             return 5000.0
-        D_night = (weight**2 / (q_night * np.pi * oswald_e * geo.span**2) +
-                   q_night * wing_area * CD0)
+        N = opt.formation_N
+        if N > 1:
+            drag_factors = per_slot_drag_factor(N, geo.span, 0.1, FormationGeometry.ECHELON)
+            avg_drag_factor = sum(drag_factors) / N
+        else:
+            avg_drag_factor = 1.0
+        D_induced_night = avg_drag_factor * weight**2 / (q_night * np.pi * oswald_e * geo.span**2)
+        D_parasite_night = q_night * wing_area * CD0
+        D_night = D_induced_night + D_parasite_night
         if not np.isfinite(D_night):
             return 5000.0
 
-        P_day = D_total * v_day / opt.propulsion_efficiency + 15.0 + 10.0 + opt.payload.power_W
-        P_night = D_night * v_night / opt.propulsion_efficiency + 15.0 + 10.0 + opt.payload.power_W
+        # Hardware power per aircraft (avionics + servo + payload)
+        hw_power = 15.0 + 10.0 + opt.payload.power_W
 
+        # Total power per aircraft
+        P_day = D_total * v_day / opt.propulsion_efficiency + hw_power
+        P_night = D_night * v_night / opt.propulsion_efficiency + hw_power
+
+        # Energy balance: per-aircraft power, but solar collection is per-aircraft area
         energy_24h = P_day * 13.9 + P_night * 10.1
 
         panel_coverage = required_coverage_fraction(
